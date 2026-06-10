@@ -150,7 +150,8 @@ public class DownloadQueueService
     }
 
     /// <summary>
-    /// 清除所有已终止的任务（Completed / Cancelled / Cancelling / Failed）
+    /// 清除所有已终止的任务，并同步清理数据库记录。
+    /// 如果队列为空，清空整个数据库。
     /// </summary>
     public void RemoveCompleted()
     {
@@ -161,10 +162,22 @@ public class DownloadQueueService
             i.Status.Contains("cancelled") ||
             i.Status.Contains("Cancelling")).ToList();
 
+        // 从数据库删除被清除项的记录
+        foreach (var item in done)
+        {
+            _recordService.DeleteRecord(item.Url);
+        }
+
         App.Current.Dispatcher.Invoke(() =>
         {
             foreach (var item in done) Items.Remove(item);
         });
+
+        // 如果队列为空，清空整个数据库
+        if (Items.Count == 0)
+        {
+            _recordService.ClearAll();
+        }
     }
 
     private static string MakeSafeFileName(string name)

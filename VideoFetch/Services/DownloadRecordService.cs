@@ -163,6 +163,18 @@ public class DownloadRecordService
         }
     }
 
+    /// <summary>
+    /// Remove all download records from database.
+    /// </summary>
+    public void ClearAll()
+    {
+        using var conn = new SqliteConnection($"Data Source={_dbPath}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM DownloadRecords";
+        cmd.ExecuteNonQuery();
+    }
+
     // ══════════════════════════════════════════════
     //  HELPER
     // ══════════════════════════════════════════════

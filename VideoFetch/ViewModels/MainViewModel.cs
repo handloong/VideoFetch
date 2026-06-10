@@ -310,7 +310,17 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ClearCompleted() => _queue.RemoveCompleted();
+    private void ClearCompleted()
+    {
+        _queue.RemoveCompleted();
+        // 同步刷新搜索结果的已下载标记
+        foreach (var r in SearchResults)
+        {
+            var record = _recordService.GetByUrl(r.Url);
+            r.IsAlreadyDownloaded = record != null && record.FileExists;
+            r.LocalFilePath = record?.FilePath ?? string.Empty;
+        }
+    }
 
     [RelayCommand]
     private void OpenOutputFolder()
