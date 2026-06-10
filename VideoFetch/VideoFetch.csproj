@@ -9,7 +9,7 @@
     <AssemblyName>VideoFetch</AssemblyName>
     <RootNamespace>VideoFetch</RootNamespace>
     <Version>1.0.0</Version>
-    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <ApplicationIcon>favicon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
