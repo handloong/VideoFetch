@@ -360,27 +360,76 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 删除已下载视频的本地文件
+    /// 删除已下载视频的本地文件（支持强制删除被占用的文件）
     /// </summary>
     [RelayCommand]
     private void DeleteLocalFile(DownloadItem? item)
     {
-        if (item == null) return;
+        if (item == null || string.IsNullOrWhiteSpace(item.OutputPath)) return;
         try
         {
-            if (System.IO.File.Exists(item.OutputPath))
+            if (!System.IO.File.Exists(item.OutputPath))
             {
-                System.IO.File.Delete(item.OutputPath);
-                // 也从数据库删除记录
                 _recordService.DeleteRecord(item.Url);
-                item.Status = "本地文件已删除";
+                item.Status = "文件已不存在";
                 item.IsCompleted = false;
+                return;
             }
+
+            // 尝试1：普通删除
+            try { System.IO.File.Delete(item.OutputPath); }
+            catch (System.IO.IOException)
+            {
+                // 尝试2：移除只读属性后删除
+                try
+                {
+                    System.IO.File.SetAttributes(item.OutputPath, System.IO.FileAttributes.Normal);
+                    System.IO.File.Delete(item.OutputPath);
+                }
+                catch
+                {
+                    // 尝试3：标记为重启后删除（强制解决文件占用）
+                    var tempName = item.OutputPath + ".delete_" + DateTime.Now.Ticks;
+                    System.IO.File.Move(item.OutputPath, tempName);
+                    try { System.IO.File.Delete(tempName); }
+                    catch
+                    {
+                        // MoveFileEx: MOVEFILE_DELAY_UNTIL_REBOOT = 4
+                        // 文件将在下次重启时被系统删除
+                        try { PInvoke.MoveFileEx(tempName, null, 4); }
+                        catch
+                        {
+                            // 最后的方案：覆盖为空文件后将原文件重命名标记
+                            using (var fs = new System.IO.FileStream(tempName, System.IO.FileMode.Create))
+                                fs.SetLength(0);
+                            try { PInvoke.MoveFileEx(tempName, null, 4); } catch { }
+                        }
+                        item.Status = "文件将在重启后删除";
+                        _recordService.DeleteRecord(item.Url);
+                        item.IsCompleted = false;
+                        return;
+                    }
+                }
+            }
+
+            // 成功删除
+            _recordService.DeleteRecord(item.Url);
+            item.Status = "本地文件已删除";
+            item.IsCompleted = false;
         }
         catch (Exception ex)
         {
             item.Status = $"删除失败: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Win32 P/Invoke helpers for file operations
+    /// </summary>
+    private static class PInvoke
+    {
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        public static extern bool MoveFileEx(string? lpExistingFileName, string? lpNewFileName, int dwFlags);
     }
 
     // ══════════════════════════════════════════════════════════

@@ -94,18 +94,42 @@
     <!-- Maximize Button -->
     <Style x:Key="MaximizeBtnStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonBase}"/>
 
-    <!-- Close Button (red on hover like QQ Music) -->
-    <Style x:Key="CloseBtnStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonBase}">
-        <Style.Triggers>
-            <Trigger Property="IsMouseOver" Value="True">
-                <Setter Property="Foreground" Value="White"/>
-                <Setter Property="Background" Value="{StaticResource CloseBtnHoverBrush}"/>
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-                <Setter Property="Foreground" Value="White"/>
-                <Setter Property="Background" Value="{StaticResource CloseBtnPressedBrush}"/>
-            </Trigger>
-        </Style.Triggers>
+    <!-- Close Button (self-contained template, red hover, X icon in template) -->
+    <Style x:Key="CloseBtnStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Width" Value="46"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                            Width="46" Height="32">
+                        <!-- X icon - centered, appropriate size -->
+                        <Path x:Name="XIcon"
+                              Data="M 13,10 L 33,22 M 33,10 L 13,22"
+                              Stroke="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=Foreground}"
+                              StrokeThickness="1.5"
+                              Width="10" Height="10"
+                              Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource CloseBtnHoverBrush}"/>
+                            <Setter TargetName="XIcon" Property="Stroke" Value="White"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource CloseBtnPressedBrush}"/>
+                            <Setter TargetName="XIcon" Property="Stroke" Value="White"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ═════════ TextBlock global ═════════ -->

@@ -36,9 +36,6 @@ public partial class MainWindow : Window
 
         // Register ESC key handler to close preview overlay
         PreviewKeyDown += MainWindow_PreviewKeyDown;
-
-        // Initialize maximize/restore icon to match current window state
-        Loaded += (s, e) => UpdateMaximizeIcon();
     }
 
     // ──── Title Bar Drag ────────────────────────────────
@@ -62,83 +59,9 @@ public partial class MainWindow : Window
         WindowState = WindowState.Minimized;
     }
 
-    private void BtnMaximize_Click(object sender, RoutedEventArgs e)
-    {
-        if (WindowState == WindowState.Maximized)
-            WindowState = WindowState.Normal;
-        else
-            WindowState = WindowState.Maximized;
-
-        UpdateMaximizeIcon();
-    }
-
     private void BtnClose_Click(object sender, RoutedEventArgs e)
     {
         Close();
-    }
-
-    /// <summary>
-    /// Switch maximize/restore icon when window state changes.
-    /// Uses Path geometry (not font glyphs) for reliability.
-    /// </summary>
-    private void UpdateMaximizeIcon()
-    {
-        if (BtnMaximize != null)
-        {
-            // Maximized → show "restore" icon (two overlapping squares)
-            // Normal   → show "maximize" icon (single square)
-            bool isMax = WindowState == WindowState.Maximized;
-            var path = new Path
-            {
-                Stroke = Brushes.White, // will inherit from style Foreground via binding normally
-                StrokeThickness = 1.2,
-                Stretch = Stretch.Uniform,
-                Width = 10,
-                Height = 10,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            if (isMax)
-            {
-                // Restore icon: two overlapping squares
-                path.Data = Geometry.Parse("M 2,5 L 8,5 L 8,11 L 2,11 Z M 4,3 L 10,3 L 10,9");
-            }
-            else
-            {
-                // Maximize icon: single square
-                path.Data = Geometry.Parse("M 1,1 L 9,1 L 9,9 L 1,9 Z");
-            }
-
-            // Bind stroke to button foreground so hover color works
-            var binding = new Binding("Foreground") { RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Button), 1) };
-            path.SetBinding(Shape.StrokeProperty, binding);
-
-            BtnMaximize.Content = path;
-        }
-    }
-
-    // Handle double-click on title bar to toggle maximize
-    protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
-    {
-        base.OnMouseLeftButtonDown(e);
-
-        if (e.ClickCount == 2)
-        {
-            var pos = e.GetPosition(this);
-            // Title bar is in Grid.Row="0", height=38px
-            if (pos.Y <= 38)
-            {
-                BtnMaximize_Click(null, null!);
-            }
-        }
-    }
-
-    // Update icon whenever window state changes (including via Win+Up etc.)
-    protected override void OnStateChanged(EventArgs e)
-    {
-        base.OnStateChanged(e);
-        UpdateMaximizeIcon();
     }
 
     // ──── Language Switcher ─────────────────────────────

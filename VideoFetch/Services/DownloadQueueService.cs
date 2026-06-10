@@ -149,9 +149,18 @@ public class DownloadQueueService
             Cancel(item);
     }
 
+    /// <summary>
+    /// 清除所有已终止的任务（Completed / Cancelled / Cancelling / Failed）
+    /// </summary>
     public void RemoveCompleted()
     {
-        var done = Items.Where(i => i.IsCompleted || (i.HasFailed && i.Status.StartsWith("Cancelled"))).ToList();
+        var done = Items.Where(i =>
+            i.IsCompleted ||
+            i.HasFailed ||
+            i.Status.Contains("Cancelled") ||
+            i.Status.Contains("cancelled") ||
+            i.Status.Contains("Cancelling")).ToList();
+
         App.Current.Dispatcher.Invoke(() =>
         {
             foreach (var item in done) Items.Remove(item);

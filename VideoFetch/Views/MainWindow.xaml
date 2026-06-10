@@ -70,29 +70,20 @@
                 <Grid Grid.Column="1" Background="Transparent"
                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"/>
 
-                <!-- Right: window control buttons (QQ Music style) -->
+                <!-- Right: window control buttons (IsHitTestVisibleInChrome to receive clicks) -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right"
-                                VerticalAlignment="Stretch">
+                                VerticalAlignment="Stretch"
+                                WindowChrome.IsHitTestVisibleInChrome="True">
                     <!-- Minimize -->
-                    <Button Style="{StaticResource TitleBarButtonBase}" Click="BtnMinimize_Click">
+                    <Button Style="{StaticResource TitleBarButtonBase}" Click="BtnMinimize_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
                         <Path Data="M 0,8 L 10,8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                               StrokeThickness="1.5" Stretch="Uniform" Width="10" Height="10"
                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Button>
-                    <!-- Maximize / Restore -->
-                    <Button x:Name="BtnMaximize" Style="{StaticResource TitleBarButtonBase}"
-                                Click="BtnMaximize_Click">
-                        <Path Data="M 1,1 L 9,1 L 9,9 L 1,9 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.2" Stretch="Uniform" Width="10" Height="10"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Button>
-                    <!-- Close -->
-                    <Button Style="{StaticResource CloseBtnStyle}" Click="BtnClose_Click">
-                        <Path Data="M 1,1 L 9,9 M 9,1 L 1,9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.5" Stretch="Uniform" Width="10" Height="10"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                    </Button>
+                    <!-- Close (X drawn in template) -->
+                    <Button Style="{StaticResource CloseBtnStyle}" Click="BtnClose_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"/>
                 </StackPanel>
             </Grid>
         </Border>
