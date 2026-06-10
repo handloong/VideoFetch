@@ -1,0 +1,112 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- ═══════════════════════════════════════════════════
+         English Language Pack (en-US)
+         ═══════════════════════════════════════════════════ -->
+
+    <!-- ── Window Title / Header ────────────────────── -->
+    <sys:String x:Key="AppTitle">VideoFetch - Video Downloader</sys:String>
+    <sys:String x:Key="HeaderTitle">VideoFetch</sys:String>
+
+    <!-- Tab names -->
+    <sys:String x:Key="Tab_Download">📥 Download</sys:String>
+    <sys:String x:Key="Tab_Search">🔍 Search</sys:String>
+    <sys:String x:Key="Tab_Queue">⏳ Downloads</sys:String>
+    <sys:String x:Key="Tab_Settings">⚙ Settings</sys:String>
+
+    <!-- ── Download tab ─────────────────────────────── -->
+    <sys:String x:Key="UrlPlaceholder">Paste video URL (PornHub / XVideos / XNXX)... Ctrl+V to quick paste</sys:String>
+    <sys:String x:Key="Btn_PasteUrl">📋 Paste &amp; Fetch</sys:String>
+    <sys:String x:Key="Btn_FetchInfo">🔍 Fetch Info</sys:String>
+    <sys:String x:Key="Label_VideoTitle">Video Title</sys:String>
+    <sys:String x:Key="Label_Author">Author</sys:String>
+    <sys:String x:Key="Label_Duration">Duration</sys:String>
+    <sys:String x:Key="Label_QualitySelect">Select Quality</sys:String>
+    <sys:String x:Key="Btn_Download">⬇ Download</sys:String>
+    <sys:String x:Key="Status_Fetching">Fetching video info...</sys:String>
+    <sys:String x:Key="Status_AddedToQueue">Added to queue:</sys:String>
+    <sys:String x:Key="Error_UnsupportedURL">Unsupported URL. Supported: PornHub, xvideos, xnxx</sys:String>
+    <sys:String x:Key="Label_OutputFolder">Output Folder:</sys:String>
+    <sys:String x:Key="Btn_BrowseFolder">Browse...</sys:String>
+    <sys:String x:Key="Btn_OpenFolder">Open Folder</sys:String>
+
+    <!-- ── Search tab ───────────────────────────────── -->
+    <sys:String x:Key="Search_Placeholder">Enter keywords to search...</sys:String>
+    <sys:String x:Key="Btn_Search">🔍 Search</sys:String>
+    <sys:String x:Key="Label_SiteSelect">Site:</sys:String>
+
+    <!-- Search results table headers -->
+    <sys:String x:Key="Col_Index">#</sys:String>
+    <sys:String x:Key="Col_Checkbox">☐</sys:String>
+    <sys:String x:Key="Col_Title">Title</sys:String>
+    <sys:String x:Key="Col_Source">Source</sys:String>
+    <sys:String x:Key="Col_Download">Action</sys:String>
+
+    <!-- Batch actions -->
+    <sys:String x:Key="Btn_SelectAll">☑ Select All</sys:String>
+    <sys:String x:Key="Btn_InvertSelection">☐ Invert</sys:String>
+    <sys:String x:Key="Btn_BatchDownload">⬇ Batch Download ({0})</sys:String>
+    <sys:String x:Key="Hint_DoubleClick">Double-click to preview image (ESC to close)</sys:String>
+    <sys:String x:Key="Btn_DownloadRow">⬇ DL</sys:String>
+    <sys:String x:Key="Btn_LoadMore">Load More Results...</sys:String>
+    <sys:String x:Key="Btn_IncludeDownloaded">Include Downloaded</sys:String>
+    <sys:String x:Key="Tip_IncludeDownloaded">When checked, previously downloaded videos will be re-downloaded (like Xunlei force re-download)</sys:String>
+
+    <!-- Empty state -->
+    <sys:String x:Key="Empty_SearchResults">Type keywords above and click Search, or load categories below.</sys:String>
+
+    <!-- Search status messages -->
+    <sys:String x:Key="Status_Searching">Searching {0} for "{1}"...</sys:String>
+    <sys:String x:Key="Status_FoundResults">Found {0} results</sys:String>
+    <sys:String x:Key="Status_NoResults">No results found. Try different keywords.</sys:String>
+    <sys:String x:Key="Status_SearchError">Search error: {0}</sys:String>
+    <sys:String x:Key="Status_LoadingPage">Loading page {0}...</sys:String>
+    <sys:String x:Key="Status_TotalResults">{0} total results loaded</sys:String>
+    <sys:String x:Key="Status_LoadingMoreError">Error loading more: {0}</sys:String>
+    <sys:String x:Key="Status_PreparingDownload">Preparing download: {0}</sys:String>
+
+    <!-- Queue tab -->
+    <sys:String x:Key="Queue_Empty">No downloads in queue</sys:String>
+    <sys:String x:Key="Queue_Header_Title">Title</sys:String>
+    <sys:String x:Key="Queue_Header_Progress">Progress</sys:String>
+    <sys:String x:Key="Queue_Header_Status">Status</sys:String>
+    <sys:String x:Key="Queue_Header_Speed">Speed</sys:String>
+    <sys:String x:Key="Queue_Header_Actions">Actions</sys:String>
+    <sys:String x:Key="Btn_CancelDownload">Cancel</sys:String>
+    <sys:String x:Key="Btn_ClearCompleted">Clear Completed</sys:String>
+    <sys:String x:Key="Btn_DeleteLocalFile">🗑 Delete Local File</sys:String>
+
+    <!-- Settings tab -->
+    <sys:String x:Key="Settings_General">General Settings</sys:String>
+    <sys:String x:Key="Settings_OutputDir">Default Output Directory</sys:String>
+    <sys:String x:Key="Settings_MaxConcurrent">Max Concurrent Downloads</sys:String>
+    <sys:String x:Key="Settings_DefaultQuality">Default Quality</sys:String>
+    <sys:String x:Key="Quality_Option_Best">Best Quality</sys:String>
+    <sys:String x:Key="Settings_AutoOpenFolder">Auto-open folder after download</sys:String>
+    <sys:String x:Key="Settings_CreateSubfolders">Create subfolders by website</sys:String>
+    <sys:String x:Key="Settings_Network">Network Settings</sys:String>
+    <sys:String x:Key="Settings_ProxyAddress">Proxy address (leave empty for no proxy)</sys:String>
+    <sys:String x:Key="Btn_SaveSettings">💾 Save Settings</sys:String>
+
+    <!-- Language switcher -->
+    <sys:String x:Key="Language_Label">Language:</sys:String>
+    <sys:String x:Key="Lang_ZhCN">中文</sys:String>
+    <sys:String x:Key="Lang_ENUS">English</sys:String>
+
+    <!-- Quick tips -->
+    <sys:String x:Key="Label_SupportedSites">Supported Sites</sys:String>
+    <sys:String x:Key="Label_QuickTips">Quick tips:</sys:String>
+    <sys:String x:Key="Tip_PasteUrl">- Paste a URL and click Fetch</sys:String>
+    <sys:String x:Key="Tip_SearchTab">- Use Search tab to discover videos</sys:String>
+    <sys:String x:Key="Tip_ClickResult">- Click a result to load its details</sys:String>
+
+    <!-- Status bar -->
+    <sys:String x:Key="Status_Downloads">Downloads: </sys:String>
+    <sys:String x:Key="Status_Results">Results: </sys:String>
+
+    <!-- Generic -->
+    <sys:String x:Key="Error_Generic">Error: {0}</sys:String>
+
+</ResourceDictionary>
