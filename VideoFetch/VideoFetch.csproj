@@ -9,9 +9,7 @@
     <AssemblyName>VideoFetch</AssemblyName>
     <RootNamespace>VideoFetch</RootNamespace>
     <Version>1.1.0</Version>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
     <ApplicationIcon>favicon.ico</ApplicationIcon>
   </PropertyGroup>
 
