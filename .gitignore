@@ -363,3 +363,7 @@ MigrationBackup/
 FodyWeavers.xsd
 # VideoFetch test output
 **/test_output/
+
+# Publish output
+publish-fd/
+publish/
