@@ -75,15 +75,13 @@
                                 VerticalAlignment="Stretch"
                                 WindowChrome.IsHitTestVisibleInChrome="True">
                     <!-- Minimize -->
-                    <Button Style="{StaticResource TitleBarButtonBase}" Click="BtnMinimize_Click"
-                            WindowChrome.IsHitTestVisibleInChrome="True">
-                        <Path Data="M 0,8 L 10,8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                              StrokeThickness="1.5" Stretch="Uniform" Width="10" Height="10"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Button>
+                    <Button Style="{StaticResource MinimizeBtnStyle}" Click="BtnMinimize_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            VerticalAlignment="Center"/>
                     <!-- Close (X drawn in template) -->
                     <Button Style="{StaticResource CloseBtnStyle}" Click="BtnClose_Click"
-                            WindowChrome.IsHitTestVisibleInChrome="True"/>
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -97,7 +95,6 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
@@ -130,24 +127,12 @@
                                 Margin="8,0,0,0" VerticalAlignment="Center"/>
                 </Grid>
 
-                <!-- Right side: loading indicator + language switcher -->
+                <!-- Right side: loading indicator -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                 Visibility="{Binding IsFetching, Converter={StaticResource BoolToVis}}"
                                 Margin="16,0,0,0">
                     <TextBlock Text="{DynamicResource Status_Fetching}" Foreground="{StaticResource TextSecondaryBrush}"
                                    FontSize="11"/>
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,4,0">
-                    <TextBlock Text="{DynamicResource Language_Label}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ComboBox x:Name="LangCombo"
-                                  SelectionChanged="LangCombo_SelectionChanged"
-                                  Width="90" FontSize="11" Padding="4,2">
-                        <ComboBoxItem Tag="zh-CN" Content="{DynamicResource Lang_ZhCN}"/>
-                        <ComboBoxItem Tag="en-US" Content="{DynamicResource Lang_ENUS}"/>
-                    </ComboBox>
                 </StackPanel>
             </Grid>
         </Border>
@@ -732,6 +717,24 @@
                                                Visibility="{Binding SettingsSavedMessage,
                                                    Converter={StaticResource NotNullOrEmpty}}"/>
                                 </StackPanel>
+
+                                <!-- Language Switcher (hidden until fixed) -->
+                                <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0"
+                                        Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource Language_Label}" FontSize="13" FontWeight="Medium"
+                                                       Margin="0,0,0,8"/>
+                                        <ComboBox x:Name="LangCombo"
+                                                      SelectionChanged="LangCombo_SelectionChanged"
+                                                      Width="140" FontSize="12" Padding="6,4" HorizontalAlignment="Left">
+                                            <ComboBoxItem Tag="zh-CN" Content="{DynamicResource Lang_ZhCN}"/>
+                                            <ComboBoxItem Tag="en-US" Content="{DynamicResource Lang_ENUS}"/>
+                                        </ComboBox>
+                                        <TextBlock Text="切换语言后将自动重启应用" FontSize="11"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>

@@ -6,13 +6,13 @@ namespace VideoFetch.Services;
 /// <summary>
 /// Manages application localization (i18n).
 /// Switches language at runtime by swapping ResourceDictionary.
-/// Default: Chinese (zh-CN)
+/// Default: English (en-US)
 /// </summary>
 public static class LanguageService
 {
     private const string ResourcePath = "VideoFetch.Strings.Strings.";
 
-    /// <summary>Currently active culture code, e.g. "zh-CN" or "en-US"</summary>
+    /// <summary>Currently active culture code, e.g. "en-US" or "zh-CN"</summary>
     public static string CurrentLanguage { get; private set; } = "zh-CN";
 
     /// <summary>Event fired when language changes</summary>

@@ -7,7 +7,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <!-- Theme -->
                 <ResourceDictionary Source="Themes/DarkTheme.xaml"/>
-                <!-- Default language: Chinese (zh-CN) -->
+                <!-- Default language: English (en-US) -->
                 <ResourceDictionary Source="Strings/Strings.zh-CN.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

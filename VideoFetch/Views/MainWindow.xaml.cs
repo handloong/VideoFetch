@@ -31,8 +31,18 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Apply saved language on startup
-        LanguageService.SwitchLanguage(LanguageService.CurrentLanguage);
+        // 启动时根据保存的语言偏好加载（在窗口显示前，安全）
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var langFile = System.IO.Path.Combine(appData, "VideoFetch", "language.txt");
+        var culture = "en-US";
+        if (System.IO.File.Exists(langFile))
+        {
+            var saved = System.IO.File.ReadAllText(langFile).Trim();
+            if (!string.IsNullOrEmpty(saved)) culture = saved;
+        }
+
+        // 启动时一次性加载，不会触发 Visual_HasParent
+        LanguageService.SwitchLanguage(culture);
 
         // Register ESC key handler to close preview overlay
         PreviewKeyDown += MainWindow_PreviewKeyDown;
@@ -67,17 +77,28 @@ public partial class MainWindow : Window
     // ──── Language Switcher ─────────────────────────────
 
     /// <summary>
+    /// <summary>
     /// Handle language ComboBox selection change.
-    /// Added null-safety to prevent crashes during resource dictionary swap.
+    /// Restarts the app to avoid Visual_HasParent crash from ResourceDictionary swap.
     /// </summary>
     private void LangCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        // 防止资源字典替换时触发重入导致闪退
         if (sender is not ComboBox cb || cb.SelectedItem is not ComboBoxItem item) return;
-        var culture = item.Tag as string ?? "zh-CN";
-        if (!string.IsNullOrWhiteSpace(culture))
+        var culture = item.Tag as string ?? "en-US";
+        if (LanguageService.CurrentLanguage == culture) return;
+
+        // 保存语言选择到文件
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var langFile = System.IO.Path.Combine(appData, "VideoFetch", "language.txt");
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(langFile)!);
+        System.IO.File.WriteAllText(langFile, culture);
+
+        // 重启应用
+        var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        if (!string.IsNullOrEmpty(exePath))
         {
-            LanguageService.SwitchLanguage(culture);
+            System.Diagnostics.Process.Start(exePath);
+            Application.Current.Shutdown();
         }
     }
 

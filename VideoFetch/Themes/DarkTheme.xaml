@@ -58,11 +58,9 @@
     </Style>
 
     <!-- ═════════ Custom Title Bar Button Style (QQ Music style) ═════════ -->
-    <!-- Shared base for minimize / maximize / close buttons -->
-    <!-- Uses Path geometry instead of font icons for maximum compatibility -->
-    <Style x:Key="TitleBarButtonBase" TargetType="Button">
+    <!-- Minimize Button (completely self-contained, no bindings or shared content) -->
+    <Style x:Key="MinimizeBtnStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent"/>
-        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Width" Value="46"/>
         <Setter Property="Height" Value="32"/>
@@ -70,17 +68,23 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bg" Background="{TemplateBinding Background}"
-                            Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border x:Name="Bg" Background="Transparent"
+                            Width="46" Height="32">
+                        <Path x:Name="Icon"
+                              Data="M 16,16 L 30,16"
+                              Stroke="#9999AA"
+                              StrokeThickness="1.5"
+                              Width="10" Height="2"
+                              Stretch="Uniform"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource TitleBarBtnHoverBrush}"/>
-                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="#3A3A55"/>
+                            <Setter TargetName="Icon" Property="Stroke" Value="#E2E2F0"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource BorderBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="#2D2D44"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -88,42 +92,35 @@
         </Setter>
     </Style>
 
-    <!-- Minimize Button -->
-    <Style x:Key="MinimizeBtnStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonBase}"/>
-
-    <!-- Maximize Button -->
-    <Style x:Key="MaximizeBtnStyle" TargetType="Button" BasedOn="{StaticResource TitleBarButtonBase}"/>
-
-    <!-- Close Button (self-contained template, red hover, X icon in template) -->
+    <!-- Close Button (completely self-contained, no bindings, no shared content) -->
     <Style x:Key="CloseBtnStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Width" Value="46"/>
         <Setter Property="Height" Value="32"/>
         <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                    <Border x:Name="Bg" Background="Transparent"
                             Width="46" Height="32">
-                        <!-- X icon - centered, appropriate size -->
+                        <!-- X icon: hardcoded gray, changes to white on hover via triggers -->
                         <Path x:Name="XIcon"
-                              Data="M 13,10 L 33,22 M 33,10 L 13,22"
-                              Stroke="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=Foreground}"
+                              Data="M 18,11 L 28,21 M 28,11 L 18,21"
+                              Stroke="#9999AA"
                               StrokeThickness="1.5"
                               Width="10" Height="10"
                               Stretch="Uniform"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
-                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource CloseBtnHoverBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="#E81123"/>
                             <Setter TargetName="XIcon" Property="Stroke" Value="White"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource CloseBtnPressedBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="#C50E1D"/>
                             <Setter TargetName="XIcon" Property="Stroke" Value="White"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
