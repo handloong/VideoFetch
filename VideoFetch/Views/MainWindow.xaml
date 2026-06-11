@@ -2,9 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:VideoFetch.ViewModels"
+        xmlns:views="clr-namespace:VideoFetch.Views"
         xmlns:conv="clr-namespace:VideoFetch.Converters"
-        xmlns:models="clr-namespace:VideoFetch.Models"
-        xmlns:srv="clr-namespace:VideoFetch.Services"
         Title="{DynamicResource AppTitle}"
         Width="1000" Height="700"
         MinWidth="880" MinHeight="580"
@@ -18,126 +17,84 @@
 
     <Window.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
-        <conv:BoolToVisibilityConverter x:Key="InvertBoolToVis" Invert="True"/>
-        <conv:NotNullOrEmptyConverter x:Key="NotNullOrEmpty"/>
-        <conv:StatusToColorConverter x:Key="StatusToColor"/>
-        <conv:ProgressToWidthConverter x:Key="ProgressToWidth"/>
-        <conv:IntGreaterThanZeroConverter x:Key="IntGtZeroVis"/>
     </Window.Resources>
 
-    <!-- Root grid: WindowChrome handles rounded corners automatically -->
+    <!-- ══ ROOT LAYOUT ══════════════════════════════════════ -->
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="38"/>
-            <!-- Custom title bar -->
-            <RowDefinition Height="Auto"/>
-            <!-- Header toolbar -->
-            <RowDefinition Height="*"/>
-            <!-- Content area -->
-            <RowDefinition Height="Auto"/>
-            <!-- Status bar -->
+            <RowDefinition Height="38"/>   <!-- Title bar -->
+            <RowDefinition Height="Auto"/> <!-- Header toolbar -->
+            <RowDefinition Height="*"/>    <!-- Content -->
+            <RowDefinition Height="Auto"/> <!-- Status bar -->
         </Grid.RowDefinitions>
 
-        <!-- ════════════ CUSTOM TITLE BAR ════════════ -->
+        <!-- ════════════ TITLE BAR ════════════ -->
         <Border Grid.Row="0" Background="{StaticResource BgSecondaryBrush}">
             <Grid Margin="16,0,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <!-- Logo area (drag) -->
                     <ColumnDefinition Width="*"/>
-                    <!-- Drag area -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- Window controls -->
                 </Grid.ColumnDefinitions>
-
-                <!-- Left: app icon + name (draggable) -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center"
                             MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                    <Border Width="22" Height="22" CornerRadius="5"
-                                Background="{StaticResource AccentBrush}">
+                    <Border Width="22" Height="22" CornerRadius="5" Background="{StaticResource AccentBrush}">
                         <TextBlock Text="VF" Foreground="White" FontWeight="Bold"
-                                       FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                   FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <TextBlock Text="{DynamicResource HeaderTitle}" FontSize="12" FontWeight="Medium"
-                                   VerticalAlignment="Center" Margin="8,0,0,0"
-                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                               VerticalAlignment="Center" Margin="8,0,0,0"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
                     <TextBlock Text="v1.1" FontSize="10" Margin="6,0,0,0"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
-
-                <!-- Center: drag area -->
                 <Grid Grid.Column="1" Background="Transparent"
                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"/>
-
-                <!-- Right: window control buttons (IsHitTestVisibleInChrome to receive clicks) -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right"
-                                VerticalAlignment="Stretch"
-                                WindowChrome.IsHitTestVisibleInChrome="True">
-                    <!-- Minimize -->
+                            VerticalAlignment="Stretch" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button Style="{StaticResource MinimizeBtnStyle}" Click="BtnMinimize_Click"
-                            WindowChrome.IsHitTestVisibleInChrome="True"
-                            VerticalAlignment="Center"/>
-                    <!-- Close (X drawn in template) -->
+                            WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center"/>
                     <Button Style="{StaticResource CloseBtnStyle}" Click="BtnClose_Click"
-                            WindowChrome.IsHitTestVisibleInChrome="True"
-                            VerticalAlignment="Center"/>
+                            WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- ════════════ HEADER TOOLBAR ════════════ -->
-        <Border Grid.Row="1"
-                    Background="{StaticResource BgSecondaryBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="0,1,0,1"
-                    Padding="20,12">
+        <Border Grid.Row="1" Background="{StaticResource BgSecondaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" Padding="20,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-
-                <!-- URL input bar -->
                 <Grid Grid.Column="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-
-                    <TextBox Grid.Column="0"
-                                 Text="{Binding UrlInput, UpdateSourceTrigger=PropertyChanged}"
-                                 VerticalAlignment="Center" x:Name="UrlBox">
+                    <TextBox Grid.Column="0" Text="{Binding UrlInput, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Center" x:Name="UrlBox">
                         <TextBox.InputBindings>
                             <KeyBinding Key="Return" Command="{Binding FetchCommand}"/>
                         </TextBox.InputBindings>
                     </TextBox>
-
-                    <Button Grid.Column="1"
-                                Content="{DynamicResource Btn_PasteUrl}"
-                                Command="{Binding PasteUrlCommand}"
-                                Style="{StaticResource SecondaryButtonStyle}"
-                                Margin="8,0,0,0" VerticalAlignment="Center"/>
-
-                    <Button Grid.Column="2"
-                                Content="{DynamicResource Btn_FetchInfo}"
-                                Command="{Binding FetchCommand}"
-                                Style="{StaticResource PrimaryButtonStyle}"
-                                Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Content="{DynamicResource Btn_PasteUrl}"
+                            Command="{Binding PasteUrlCommand}" Style="{StaticResource SecondaryButtonStyle}"
+                            Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    <Button Grid.Column="2" Content="{DynamicResource Btn_FetchInfo}"
+                            Command="{Binding FetchCommand}" Style="{StaticResource PrimaryButtonStyle}"
+                            Margin="8,0,0,0" VerticalAlignment="Center"/>
                 </Grid>
-
-                <!-- Right side: loading indicator -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
-                                Visibility="{Binding IsFetching, Converter={StaticResource BoolToVis}}"
-                                Margin="16,0,0,0">
-                    <TextBlock Text="{DynamicResource Status_Fetching}" Foreground="{StaticResource TextSecondaryBrush}"
-                                   FontSize="11"/>
+                            Visibility="{Binding IsFetching, Converter={StaticResource BoolToVis}}" Margin="16,0,0,0">
+                    <TextBlock Text="{DynamicResource Status_Fetching}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- ════════════ MAIN CONTENT AREA ════════════ -->
+        <!-- ════════════ MAIN CONTENT ════════════ -->
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="340" MinWidth="260"/>
@@ -145,631 +102,69 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ═══ LEFT PANEL: Video info card ═══ -->
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- Video info card -->
-                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="12,8,6,6">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Idle state -->
-                        <StackPanel
-                                        Visibility="{Binding HasVideoInfo, Converter={StaticResource InvertBoolToVis}}"
-                                        HorizontalAlignment="Center" Margin="0,24">
-                            <TextBlock Text="{DynamicResource Empty_SearchResults}"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
-                                           MaxWidth="280"/>
-                            <TextBlock Margin="0,8,0,0"
-                                           Foreground="{StaticResource ErrorBrush}"
-                                           FontSize="12" TextWrapping="Wrap" TextAlignment="Center"
-                                           Text="{Binding FetchStatusMessage}"
-                                           Visibility="{Binding FetchStatusMessage, Converter={StaticResource NotNullOrEmpty}}"/>
-                        </StackPanel>
-
-                        <!-- Video loaded state -->
-                        <StackPanel
-                                        Visibility="{Binding HasVideoInfo, Converter={StaticResource BoolToVis}}">
-                            <!-- Thumbnail -->
-                            <Border CornerRadius="8" Margin="0,0,0,10"
-                                        ClipToBounds="True" MaxHeight="150">
-                                <Image Source="{Binding ThumbnailUrl}"
-                                           Stretch="UniformToFill"/>
-                            </Border>
-
-                            <!-- Title -->
-                            <TextBlock Text="{Binding VideoInfo.Title}"
-                                           TextWrapping="Wrap" FontSize="13" FontWeight="Medium"
-                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                           MaxHeight="56"/>
-
-                            <!-- Meta row -->
-                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                <TextBlock Text="{Binding VideoInfo.Author}"
-                                               Foreground="{StaticResource AccentBrush}" FontSize="11"/>
-                                <TextBlock Text=" · " Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                                <TextBlock Text="{Binding VideoInfo.Duration}"
-                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                                <TextBlock Text=" · " Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                                <TextBlock Text="{Binding VideoInfo.Site}"
-                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                            </StackPanel>
-
-                            <Separator Margin="0,10"/>
-
-                            <!-- Quality selector -->
-                            <Label Content="{DynamicResource Label_QualitySelect}" FontSize="12"/>
-                            <ComboBox ItemsSource="{Binding AvailableQualities}"
-                                          SelectedItem="{Binding SelectedQuality}"
-                                          DisplayMemberPath="Label" Margin="0,0,0,10"/>
-
-                            <!-- Download button -->
-                            <Button Content="{DynamicResource Btn_Download}"
-                                        Command="{Binding DownloadCommand}"
-                                        Style="{StaticResource PrimaryButtonStyle}"
-                                        HorizontalAlignment="Stretch"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- Supported sites info -->
-                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="12,6,6,10"
-                            VerticalAlignment="Top">
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Label_SupportedSites}" FontSize="12" FontWeight="Medium"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-                        <TextBlock Text="PornHub · XVideos · XNXX" FontSize="12"
-                                       Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
-
-                        <Separator Margin="0,8"/>
-
-                        <TextBlock Text="{DynamicResource Label_QuickTips}" FontSize="11" FontWeight="Medium"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
-                        <TextBlock Text="{DynamicResource Tip_PasteUrl}" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-                        <TextBlock Text="{DynamicResource Tip_SearchTab}" FontSize="11" Margin="0,2,0,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-                        <TextBlock Text="{DynamicResource Tip_ClickResult}" FontSize="11" Margin="0,2,0,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
+            <!-- Left: Download panel -->
+            <views:DownloadTab Grid.Column="0"/>
 
             <!-- Resizer -->
-            <GridSplitter Grid.Column="1" Width="1"
-                              Background="{StaticResource BorderBrush}"
-                              VerticalAlignment="Stretch" HorizontalAlignment="Center"/>
+            <GridSplitter Grid.Column="1" Width="1" Background="{StaticResource BorderBrush}"
+                          VerticalAlignment="Stretch" HorizontalAlignment="Center"/>
 
-            <!-- ═══ RIGHT PANEL: Tabs ═══ -->
-            <Grid Grid.Column="2">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="461*"/>
-                    <ColumnDefinition Width="198*"/>
-                </Grid.ColumnDefinitions>
-                <TabControl Background="Transparent" BorderThickness="0"
-                                SelectedIndex="{Binding SelectedTab}" Grid.ColumnSpan="2">
-                    <TabControl.Resources>
-                        <Style TargetType="TabItem">
-                            <Setter Property="Background" Value="Transparent"/>
-                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-                            <Setter Property="BorderThickness" Value="0"/>
-                            <Setter Property="Padding" Value="14,9"/>
-                            <Setter Property="FontSize" Value="13"/>
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="TabItem">
-                                        <Border x:Name="Border" Padding="{TemplateBinding Padding}"
-                                                    BorderBrush="Transparent" BorderThickness="0,0,0,2">
-                                            <ContentPresenter ContentSource="Header"/>
-                                        </Border>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsSelected" Value="True">
-                                                <Setter TargetName="Border" Property="BorderBrush"
-                                                            Value="{StaticResource AccentBrush}"/>
-                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </TabControl.Resources>
+            <!-- Right: Tabs -->
+            <TabControl Grid.Column="2" Background="Transparent" BorderThickness="0" SelectedIndex="{Binding SelectedTab}">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Padding" Value="14,9"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="TabItem">
+                                    <Border x:Name="Border" Padding="{TemplateBinding Padding}"
+                                            BorderBrush="Transparent" BorderThickness="0,0,0,2">
+                                        <ContentPresenter ContentSource="Header"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsSelected" Value="True">
+                                            <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TabControl.Resources>
 
-                    <!-- ╔══ SEARCH TAB ═════════════════════════════════════╗ -->
-                    <TabItem Header="{DynamicResource Tab_Search}">
-                        <Grid Margin="12">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <!-- search bar row -->
-                                <RowDefinition Height="Auto"/>
-                                <!-- status message -->
-                                <RowDefinition Height="*"/>
-                                <!-- results container -->
-                            </Grid.RowDefinitions>
-
-                            <!-- ── Search Bar ──────────────── -->
-                            <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="0,0,0,8">
-                                <Grid Margin="4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="130"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-
-                                        <TextBox Grid.Column="0"
-                                                     Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
-                                                     VerticalAlignment="Center">
-                                            <TextBox.InputBindings>
-                                                <KeyBinding Key="Return" Command="{Binding SearchCommand}"/>
-                                            </TextBox.InputBindings>
-                                        </TextBox>
-
-                                        <ComboBox Grid.Column="1"
-                                                      ItemsSource="{Binding SupportedSites}"
-                                                      SelectedItem="{Binding SearchSite}"
-                                                      Margin="8,0,0,0" VerticalAlignment="Center"
-                                                      FontSize="12"/>
-
-                                        <Button Grid.Row="0" Grid.Column="2"
-                                                    Content="{DynamicResource Btn_Search}"
-                                                    Command="{Binding SearchCommand}"
-                                                    Style="{StaticResource PrimaryButtonStyle}"
-                                                    Margin="8,0,0,0" VerticalAlignment="Center"/>
-                                </Grid>
-                            </Border>
-
-                            <!-- ── Status Message ──────────────────── -->
-                            <TextBlock Grid.Row="1"
-                                           Text="{Binding SearchStatusMessage}"
-                                           FontSize="11"
-                                           Foreground="{StaticResource AccentBrush}"
-                                           Margin="0,0,0,4"
-                                           Visibility="{Binding SearchStatusMessage, Converter={StaticResource NotNullOrEmpty}}"/>
-
-                            <!-- ── Search Results Container ─────────────── -->
-                            <Grid Grid.Row="2">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <!-- batch action bar -->
-                                    <RowDefinition Height="*"/>
-                                    <!-- results table -->
-                                    <RowDefinition Height="Auto"/>
-                                    <!-- load-more button -->
-                                </Grid.RowDefinitions>
-
-                                <!-- Batch action toolbar -->
-                                <Border Grid.Row="0"
-                                            Background="{StaticResource BgTertiaryBrush}"
-                                            BorderBrush="{StaticResource BorderBrush}"
-                                            BorderThickness="0,0,0,1"
-                                            Padding="8,5"
-                                            Visibility="{Binding HasSearchResults,
-                                                Converter={StaticResource BoolToVis}}">
-                                    <StackPanel Orientation="Horizontal">
-                                        <!-- Select All / Deselect All -->
-                                        <Button Content="{DynamicResource Btn_SelectAll}"
-                                                    Command="{Binding SelectAllResultsCommand}"
-                                                    Style="{StaticResource SecondaryButtonStyle}"
-                                                    FontSize="10" Padding="8,2"
-                                                    Margin="0,0,5,0"/>
-                                        <Button Content="{DynamicResource Btn_InvertSelection}"
-                                                    Command="{Binding InvertSelectionCommand}"
-                                                    Style="{StaticResource SecondaryButtonStyle}"
-                                                    FontSize="10" Padding="8,2"
-                                                    Margin="0,0,8,0"/>
-
-                                        <Separator Style="{StaticResource VerticalSepStyle}"/>
-
-                                        <!-- Include already-downloaded (force re-download) -->
-                                        <CheckBox Content="{DynamicResource Btn_IncludeDownloaded}"
-                                                  IsChecked="{Binding IncludeAlreadyDownloaded}"
-                                                  FontSize="10"
-                                                  Margin="0,0,8,0"
-                                                  VerticalAlignment="Center"
-                                                  ToolTip="{DynamicResource Tip_IncludeDownloaded}"/>
-
-                                        <Separator Style="{StaticResource VerticalSepStyle}"/>
-
-                                        <!-- Batch Download -->
-                                        <Button Command="{Binding BatchDownloadCommand}"
-                                                    Style="{StaticResource PrimaryButtonStyle}"
-                                                    FontSize="10" Padding="10,2"
-                                                    Margin="8,0,6,0"
-                                                    Content="{Binding BatchDownloadText}"/>
-
-                                            <TextBlock Text="{DynamicResource Hint_DoubleClick}"
-                                                       FontSize="10"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                       VerticalAlignment="Center"
-                                                       Margin="6,0,0,0"
-                                                       Visibility="{Binding HasSearchResults,
-                                                           Converter={StaticResource BoolToVis}}"/>
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- Results ListView -->
-                                <ListView Grid.Row="1"
-                                              ItemsSource="{Binding SearchResults}"
-                                              SelectionMode="Extended"
-                                              Background="Transparent"
-                                              BorderThickness="0"
-                                              ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
-                                              ScrollViewer.CanContentScroll="False"
-                                              Visibility="{Binding HasSearchResults,
-                                                  Converter={StaticResource BoolToVis}}"
-                                              MouseDoubleClick="SearchResultsList_MouseDoubleClick">
-                                    <ListView.View>
-                                        <GridView AllowsColumnReorder="False">
-                                            <!-- Index column -->
-                                            <GridViewColumn Header="#" Width="40">
-                                                <GridViewColumn.CellTemplate>
-                                                    <DataTemplate DataType="{x:Type models:SearchResult}">
-                                                        <TextBlock Text="{Binding Index}"
-                                                                       FontSize="11"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"/>
-                                                    </DataTemplate>
-                                                </GridViewColumn.CellTemplate>
-                                            </GridViewColumn>
-
-                                            <!-- Checkbox column -->
-                                            <GridViewColumn Header="" Width="36">
-                                                <GridViewColumn.CellTemplate>
-                                                    <DataTemplate DataType="{x:Type models:SearchResult}">
-                                                        <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
-                                                                      HorizontalAlignment="Center"
-                                                                      VerticalAlignment="Center"
-                                                                      Margin="0"/>
-                                                    </DataTemplate>
-                                                </GridViewColumn.CellTemplate>
-                                            </GridViewColumn>
-
-                                            <!-- Title column (flexible) -->
-                                            <GridViewColumn Header="{DynamicResource Col_Title}" Width="300">
-                                                <GridViewColumn.CellTemplate>
-                                                    <DataTemplate DataType="{x:Type models:SearchResult}">
-                                                        <Grid>
-                                                            <TextBlock Text="{Binding Title}"
-                                                                       FontSize="12"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       ToolTip="{Binding Title}"
-                                                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                                                       VerticalAlignment="Center"
-                                                                       Padding="6,4"/>
-                                                            <!-- 已下载标识：绿色左边框（类似迅雷） -->
-                                                            <Border BorderThickness="3,0,0,0"
-                                                                    BorderBrush="#4CAF50"
-                                                                    Opacity="0.6"
-                                                                    Visibility="{Binding IsAlreadyDownloaded,
-                                                                        Converter={StaticResource BoolToVis}}"/>
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </GridViewColumn.CellTemplate>
-                                            </GridViewColumn>
-
-                                            <!-- Site tag column -->
-                                            <GridViewColumn Header="{DynamicResource Col_Source}" Width="65">
-                                                <GridViewColumn.CellTemplate>
-                                                    <DataTemplate DataType="{x:Type models:SearchResult}">
-                                                        <Border CornerRadius="3"
-                                                                    Background="{StaticResource AccentBrush}"
-                                                                    Opacity="0.7"
-                                                                    Padding="3,0"
-                                                                    HorizontalAlignment="Left"
-                                                                    VerticalAlignment="Center">
-                                                            <TextBlock Text="{Binding Site}"
-                                                                           FontSize="9"
-                                                                           FontWeight="Medium"
-                                                                           Foreground="White"/>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </GridViewColumn.CellTemplate>
-                                            </GridViewColumn>
-
-                                            <!-- Quick download / status column -->
-                                            <GridViewColumn Header="" Width="80">
-                                                <GridViewColumn.CellTemplate>
-                                                    <DataTemplate DataType="{x:Type models:SearchResult}">
-                                                        <Grid>
-                                                            <!-- 未下载：显示下载按钮 -->
-                                                            <Button Content="{DynamicResource Btn_DownloadRow}"
-                                                                    Command="{Binding DataContext.DownloadSearchResultCommand,
-                                                                                    RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                    CommandParameter="{Binding}"
-                                                                    Style="{StaticResource SecondaryButtonStyle}"
-                                                                    FontSize="9" Padding="6,2"
-                                                                    HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center"
-                                                                    Visibility="{Binding IsAlreadyDownloaded,
-                                                                        Converter={StaticResource InvertBoolToVis}}"/>
-                                                            <!-- 已下载：显示状态 + 强制重下载按钮 -->
-                                                            <StackPanel Orientation="Horizontal"
-                                                                        HorizontalAlignment="Center"
-                                                                        VerticalAlignment="Center"
-                                                                        Visibility="{Binding IsAlreadyDownloaded,
-                                                                            Converter={StaticResource BoolToVis}}">
-                                                                <!-- 绿色对勾 + 文字 -->
-                                                                <Border CornerRadius="3"
-                                                                        Background="#2E7D32"
-                                                                        Padding="4,1">
-                                                                    <TextBlock Text="✓ 已下载"
-                                                                               FontSize="9"
-                                                                               Foreground="White"
-                                                                               FontWeight="Medium"/>
-                                                                </Border>
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </GridViewColumn.CellTemplate>
-                                            </GridViewColumn>
-
-                                        </GridView>
-                                    </ListView.View>
-                                </ListView>
-
-                                <!-- Empty state hint -->
-                                <Border Grid.Row="1" Grid.RowSpan="2"
-                                            Background="Transparent"
-                                            Visibility="{Binding HasSearchResults,
-                                                Converter={StaticResource InvertBoolToVis},
-                                                FallbackValue=Visible}">
-                                    <TextBlock Text="{DynamicResource Empty_SearchResults}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                                   FontSize="13" HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center" TextAlignment="Center"/>
-                                </Border>
-
-                                <!-- Load more button -->
-                                <Button Grid.Row="2" Content="{DynamicResource Btn_LoadMore}"
-                                            Command="{Binding LoadMoreSearchResultsCommand}"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            Margin="0,6,0,0" Padding="14,5"
-                                            Visibility="{Binding HasMoreResults, Converter={StaticResource BoolToVis}}"/>
-                            </Grid>
-                        </Grid>
-                    </TabItem>
-
-                    <!-- ╔══ QUEUE / DOWNLOADS TAB ═════════════════════════════╗ -->
-                    <TabItem Header="{DynamicResource Tab_Queue}">
-                        <Grid Margin="12">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-
-                            <!-- Toolbar -->
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
-                                <Button Content="{DynamicResource Btn_ClearCompleted}"
-                                            Command="{Binding ClearCompletedCommand}"
-                                            Style="{StaticResource SecondaryButtonStyle}" Padding="8,3"/>
-                                <Button Content="{DynamicResource Btn_OpenFolder}"
-                                            Command="{Binding OpenOutputFolderCommand}"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Margin="8,0,0,0" Padding="8,3"/>
-                            </StackPanel>
-
-                            <!-- Download list (table layout like history) -->
-                            <ListView Grid.Row="1" ItemsSource="{Binding DownloadItems}"
-                                          Background="Transparent" BorderThickness="0"
-                                          ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
-                                          MouseDoubleClick="QueueList_MouseDoubleClick">
-                                <ListView.View>
-                                    <GridView AllowsColumnReorder="False">
-                                        <!-- Title column -->
-                                        <GridViewColumn Header="{DynamicResource Queue_Header_Title}" Width="220">
-                                            <GridViewColumn.CellTemplate>
-                                                <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                                    <TextBlock Text="{Binding Title}"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   ToolTip="{Binding Title}"
-                                                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                                                   Padding="6,4" FontSize="12"/>
-                                                </DataTemplate>
-                                            </GridViewColumn.CellTemplate>
-                                        </GridViewColumn>
-                                        <!-- Progress column -->
-                                        <GridViewColumn Header="{DynamicResource Queue_Header_Progress}" Width="100">
-                                            <GridViewColumn.CellTemplate>
-                                                <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                                    <Grid>
-                                                        <ProgressBar Value="{Binding Progress}" Maximum="100"
-                                                                         Height="6" Width="80"
-                                                                         HorizontalAlignment="Left"
-                                                                         VerticalAlignment="Center"/>
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </GridViewColumn.CellTemplate>
-                                        </GridViewColumn>
-                                        <!-- Status column -->
-                                        <GridViewColumn Header="{DynamicResource Queue_Header_Status}" Width="110">
-                                            <GridViewColumn.CellTemplate>
-                                                <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding Status}"
-                                                                       FontSize="11"
-                                                                       Foreground="{Binding Status,
-                                                                           Converter={StaticResource StatusToColor}}"
-                                                                       Padding="6,2"/>
-                                                        <TextBlock Text="{Binding Speed}"
-                                                                       FontSize="10"
-                                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       Padding="6,0"/>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </GridViewColumn.CellTemplate>
-                                        </GridViewColumn>
-                                        <!-- Actions column -->
-                                        <GridViewColumn Header="{DynamicResource Queue_Header_Actions}" Width="140">
-                                            <GridViewColumn.CellTemplate>
-                                                <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                                    <StackPanel Orientation="Horizontal"
-                                                                    HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center">
-                                                        <!-- Cancel button (only when not completed) -->
-                                                        <Button Content="{DynamicResource Btn_CancelDownload}"
-                                                                    Command="{Binding DataContext.CancelDownloadCommand,
-                                                                                    RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                    CommandParameter="{Binding}"
-                                                                    Style="{StaticResource SecondaryButtonStyle}"
-                                                                    FontSize="10" Padding="5,2"
-                                                                    Visibility="{Binding IsCompleted,
-                                                                        Converter={StaticResource InvertBoolToVis}}"/>
-                                                        <!-- Delete local file button (only when completed) -->
-                                                        <Button Content="{DynamicResource Btn_DeleteLocalFile}"
-                                                                    Command="{Binding DataContext.DeleteLocalFileCommand,
-                                                                                    RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                    CommandParameter="{Binding}"
-                                                                    Style="{StaticResource DangerButtonStyle}"
-                                                                    FontSize="10" Padding="5,2"
-                                                                    Visibility="{Binding IsCompleted,
-                                                                        Converter={StaticResource BoolToVis}}"/>
-                                                    </StackPanel>
-                                                </DataTemplate>
-                                            </GridViewColumn.CellTemplate>
-                                        </GridViewColumn>
-                                    </GridView>
-                                </ListView.View>
-                            </ListView>
-
-                            <!-- Empty state -->
-                            <TextBlock Grid.Row="1"
-                                           Text="{DynamicResource Queue_Empty}"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           FontSize="13" IsHitTestVisible="False"
-                                           Visibility="{Binding IsQueueEmpty,
-                                               Converter={StaticResource BoolToVis}}"/>
-                        </Grid>
-                    </TabItem>
-
-                    <!-- ╔══ SETTINGS TAB ════════════════════════════════════╗ -->
-                    <TabItem Header="{DynamicResource Tab_Settings}">
-                        <ScrollViewer Margin="12" VerticalScrollBarVisibility="Auto">
-                            <StackPanel>
-                                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
-                                    <StackPanel>
-                                        <TextBlock Text="{DynamicResource Settings_General}" FontSize="13" FontWeight="Medium"
-                                                       Margin="0,0,0,12"/>
-
-                                        <Label Content="{DynamicResource Settings_OutputDir}"/>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Grid.Column="0"
-                                                         Text="{Binding Settings.OutputDirectory,
-                                                             UpdateSourceTrigger=PropertyChanged}"/>
-                                            <Button Grid.Column="1" Content="{DynamicResource Btn_BrowseFolder}"
-                                                        Command="{Binding BrowseOutputFolderCommand}"
-                                                        Style="{StaticResource SecondaryButtonStyle}"
-                                                        Margin="8,0,0,0"/>
-                                        </Grid>
-
-                                        <Separator/>
-
-                                        <Label Content="{DynamicResource Settings_MaxConcurrent}" Margin="0,4,0,0"/>
-                                        <TextBox Text="{Binding Settings.MaxConcurrentDownloads,
-                                                     UpdateSourceTrigger=PropertyChanged}"
-                                                     Width="80" HorizontalAlignment="Left"/>
-
-                                        <Separator/>
-
-                                        <CheckBox Content="{DynamicResource Settings_AutoOpenFolder}"
-                                                      IsChecked="{Binding Settings.AutoOpenFolder}"
-                                                      Margin="0,8"/>
-
-                                        <CheckBox Content="{DynamicResource Settings_CreateSubfolders}"
-                                                      IsChecked="{Binding Settings.CreateSubfolders}"
-                                                      Margin="0,4,0,0"/>
-                                    </StackPanel>
-                                </Border>
-
-                                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
-                                    <StackPanel>
-                                        <TextBlock Text="{DynamicResource Settings_Network}" FontSize="13" FontWeight="Medium"
-                                                       Margin="0,0,0,12"/>
-
-                                        <Label Content="{DynamicResource Settings_ProxyAddress}"/>
-                                        <TextBox Text="{Binding Settings.ProxyUrl,
-                                                     UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
-                                </Border>
-
-                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                    <Button Content="{DynamicResource Btn_SaveSettings}"
-                                                Command="{Binding SaveSettingsCommand}"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                HorizontalAlignment="Left" Padding="16,6"/>
-                                    <!-- Save success feedback (auto-hides after 2.5s) -->
-                                    <TextBlock Text="{Binding SettingsSavedMessage}"
-                                               Foreground="{StaticResource SuccessBrush}"
-                                               FontSize="12"
-                                               VerticalAlignment="Center"
-                                               Margin="14,0,0,0"
-                                               Visibility="{Binding SettingsSavedMessage,
-                                                   Converter={StaticResource NotNullOrEmpty}}"/>
-                                </StackPanel>
-
-                                <!-- Language Switcher (hidden until fixed) -->
-                                <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0"
-                                        Visibility="Collapsed">
-                                    <StackPanel>
-                                        <TextBlock Text="{DynamicResource Language_Label}" FontSize="13" FontWeight="Medium"
-                                                       Margin="0,0,0,8"/>
-                                        <ComboBox x:Name="LangCombo"
-                                                      SelectionChanged="LangCombo_SelectionChanged"
-                                                      Width="140" FontSize="12" Padding="6,4" HorizontalAlignment="Left">
-                                            <ComboBoxItem Tag="zh-CN" Content="{DynamicResource Lang_ZhCN}"/>
-                                            <ComboBoxItem Tag="en-US" Content="{DynamicResource Lang_ENUS}"/>
-                                        </ComboBox>
-                                        <TextBlock Text="切换语言后将自动重启应用" FontSize="11"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                       Margin="0,4,0,0"/>
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </TabItem>
-
-                </TabControl>
-            </Grid>
+                <TabItem Header="{DynamicResource Tab_Search}">
+                    <views:SearchTab/>
+                </TabItem>
+                <TabItem Header="{DynamicResource Tab_Queue}">
+                    <views:QueueTab/>
+                </TabItem>
+                <TabItem Header="{DynamicResource Tab_Settings}">
+                    <views:SettingsTab/>
+                </TabItem>
+            </TabControl>
         </Grid>
 
         <!-- ════════════ STATUS BAR ════════════ -->
-        <Border Grid.Row="3"
-                    Background="{StaticResource BgSecondaryBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="0,1,0,0"
-                    Padding="16,5">
+        <Border Grid.Row="3" Background="{StaticResource BgSecondaryBrush}"
+                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="16,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                               Text="{Binding FetchStatusMessage}"
-                               FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="1"
-                               FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               VerticalAlignment="Center">
-                        <Run Text="{DynamicResource Status_Downloads}"/>
-                        <Run Text="{Binding DownloadItems.Count, Mode=OneWay}"/>
-                        <Run Text="  |  "/>
-                        <Run Text="{DynamicResource Status_Results}"/>
-                        <Run Text="{Binding SearchResults.Count, Mode=OneWay}"/>
+                <TextBlock Grid.Column="0" Text="{Binding FetchStatusMessage}" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center">
+                    <Run Text="{DynamicResource Status_Downloads}"/>
+                    <Run Text="{Binding DownloadItems.Count, Mode=OneWay}"/>
+                    <Run Text="  |  "/>
+                    <Run Text="{DynamicResource Status_Results}"/>
+                    <Run Text="{Binding SearchResults.Count, Mode=OneWay}"/>
                 </TextBlock>
             </Grid>
         </Border>

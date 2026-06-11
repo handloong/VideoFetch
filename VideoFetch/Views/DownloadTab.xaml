@@ -1,0 +1,86 @@
+<UserControl x:Class="VideoFetch.Views.DownloadTab"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:VideoFetch.Converters">
+    <UserControl.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:BoolToVisibilityConverter x:Key="InvertBoolToVis" Invert="True"/>
+        <conv:NotNullOrEmptyConverter x:Key="NotNullOrEmpty"/>
+    </UserControl.Resources>
+
+    <!-- Left panel: video info + supported sites -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Video info card -->
+        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Margin="12,8,6,6">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Idle state -->
+                <StackPanel Visibility="{Binding HasVideoInfo, Converter={StaticResource InvertBoolToVis}}"
+                            HorizontalAlignment="Center" Margin="0,24">
+                    <TextBlock Text="{DynamicResource Empty_SearchResults}"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                               MaxWidth="280"/>
+                    <TextBlock Margin="0,8,0,0"
+                               Foreground="{StaticResource ErrorBrush}"
+                               FontSize="12" TextWrapping="Wrap" TextAlignment="Center"
+                               Text="{Binding FetchStatusMessage}"
+                               Visibility="{Binding FetchStatusMessage, Converter={StaticResource NotNullOrEmpty}}"/>
+                </StackPanel>
+
+                <!-- Video loaded state -->
+                <StackPanel Visibility="{Binding HasVideoInfo, Converter={StaticResource BoolToVis}}">
+                    <Border CornerRadius="8" Margin="0,0,0,10" ClipToBounds="True" MaxHeight="150">
+                        <Image Source="{Binding ThumbnailUrl}" Stretch="UniformToFill"/>
+                    </Border>
+                    <TextBlock Text="{Binding VideoInfo.Title}" TextWrapping="Wrap"
+                               FontSize="13" FontWeight="Medium" MaxHeight="56"
+                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                        <TextBlock Text="{Binding VideoInfo.Author}" Foreground="{StaticResource AccentBrush}" FontSize="11"/>
+                        <TextBlock Text=" · " Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                        <TextBlock Text="{Binding VideoInfo.Duration}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                        <TextBlock Text=" · " Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                        <TextBlock Text="{Binding VideoInfo.Site}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                    </StackPanel>
+                    <Separator Margin="0,10"/>
+                    <Label Content="{DynamicResource Label_QualitySelect}" FontSize="12"/>
+                    <ComboBox ItemsSource="{Binding AvailableQualities}"
+                              SelectedItem="{Binding SelectedQuality}"
+                              DisplayMemberPath="Label" Margin="0,0,0,10"/>
+                    <Button Content="{DynamicResource Btn_Download}"
+                            Command="{Binding DownloadCommand}"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            HorizontalAlignment="Stretch"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Supported sites info -->
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="12,6,6,10" VerticalAlignment="Top">
+            <StackPanel>
+                <TextBlock Text="{DynamicResource Label_SupportedSites}" FontSize="12" FontWeight="Medium"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                <TextBlock Text="PornHub · XVideos · XNXX" FontSize="12"
+                           Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
+                <Separator Margin="0,8"/>
+                <TextBlock Text="{DynamicResource Label_QuickTips}" FontSize="11" FontWeight="Medium"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                <TextBlock Text="{DynamicResource Tip_PasteUrl}" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                <TextBlock Text="{DynamicResource Tip_SearchTab}" FontSize="11" Margin="0,2,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                <TextBlock Text="{DynamicResource Tip_ClickResult}" FontSize="11" Margin="0,2,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
