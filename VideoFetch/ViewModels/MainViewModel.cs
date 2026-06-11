@@ -151,6 +151,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _includeAlreadyDownloaded;
 
+    /// <summary>
+    /// 下载队列是否为空（用于显示/隐藏提示文字）
+    /// </summary>
+    public bool IsQueueEmpty => DownloadItems.Count == 0;
+
     public MainViewModel()
     {
         _settings = _settingsService.Load();
@@ -160,6 +165,9 @@ public partial class MainViewModel : ObservableObject
         // Keep HasSearchResults in sync with SearchResults collection
         // Also update 1-based indices for display
         SearchResults.CollectionChanged += SearchResults_CollectionChanged;
+
+        // Keep IsQueueEmpty in sync
+        DownloadItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsQueueEmpty));
     }
 
     /// <summary>
