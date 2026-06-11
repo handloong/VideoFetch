@@ -14,14 +14,26 @@ public partial class QueueTab : UserControl
         if (!item.IsCompleted || string.IsNullOrWhiteSpace(item.OutputPath)) return;
         if (!System.IO.File.Exists(item.OutputPath)) return;
 
-        try
+        var vm = DataContext as ViewModels.MainViewModel;
+        bool useBuiltIn = vm?.Settings.UseBuiltInPlayer == true;
+
+        if (useBuiltIn)
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = item.OutputPath,
-                UseShellExecute = true
-            });
+            var player = new VideoPlayerWindow();
+            player.Play(item.OutputPath);
+            player.Show();
         }
-        catch { }
+        else
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = item.OutputPath,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
     }
 }

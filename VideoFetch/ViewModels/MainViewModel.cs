@@ -53,6 +53,10 @@ public partial class MainViewModel : ObservableObject
     // ── Queue / progress ───────────────────────────────────────────────────
     public ObservableCollection<DownloadItem> DownloadItems => _queue.Items;
 
+    // ── App info ───────────────────────────────────────────────────────────
+    public string AppVersion { get; } =
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0";
+
     // ── Settings ───────────────────────────────────────────────────────────
     [ObservableProperty]
     private AppSettings _settings;
@@ -341,10 +345,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void BrowseOutputFolder()
     {
-        // Open current output folder in Explorer so user can see/select path
-        var dir = Settings.OutputDirectory;
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        System.Diagnostics.Process.Start("explorer.exe", dir);
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "选择下载保存路径",
+            InitialDirectory = Settings.OutputDirectory
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            Settings.OutputDirectory = dialog.FolderName;
+            OnPropertyChanged(nameof(Settings));
+        }
     }
 
     [RelayCommand]

@@ -45,7 +45,7 @@
                     <TextBlock Text="{DynamicResource HeaderTitle}" FontSize="12" FontWeight="Medium"
                                VerticalAlignment="Center" Margin="8,0,0,0"
                                Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="v1.1" FontSize="10" Margin="6,0,0,0"
+                    <TextBlock Text="{Binding AppVersion, StringFormat=v{0}}" FontSize="10" Margin="6,0,0,0"
                                VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
                 <Grid Grid.Column="1" Background="Transparent"

@@ -28,6 +28,33 @@ public class DownloadQueueService
         _engine = new DownloadEngine(settings.MaxSegmentThreads);
         _infoService = new VideoInfoService();
         _concurrencySemaphore = new SemaphoreSlim(_maxConcurrent, _maxConcurrent);
+
+        // 启动时加载历史下载记录
+        LoadHistory();
+    }
+
+    /// <summary>
+    /// Load completed download records from SQLite into the queue display.
+    /// These are read-only history entries — no re-downloading.
+    /// </summary>
+    private void LoadHistory()
+    {
+        foreach (var rec in _recordService.GetAllRecords())
+        {
+            Items.Add(new DownloadItem
+            {
+                Title = rec.Title,
+                Url = rec.Url,
+                OutputPath = rec.FilePath,
+                Quality = rec.Quality,
+                Progress = 100,
+                IsCompleted = System.IO.File.Exists(rec.FilePath),
+                Status = System.IO.File.Exists(rec.FilePath) ? "已完成" : "文件已删除",
+                Speed = string.Empty,
+                AddedAt = rec.DownloadedAt,
+                CancellationSource = new CancellationTokenSource()
+            });
+        }
     }
 
     /// <summary>
@@ -150,27 +177,27 @@ public class DownloadQueueService
     }
 
     /// <summary>
-    /// 清除所有已终止的任务，并同步清理数据库记录。
+    /// 清除所有非下载中的任务（Completed/Failed/Cancelled/已删除等），并同步清理数据库记录。
     /// 如果队列为空，清空整个数据库。
     /// </summary>
     public void RemoveCompleted()
     {
-        var done = Items.Where(i =>
-            i.IsCompleted ||
-            i.HasFailed ||
-            i.Status.Contains("Cancelled") ||
-            i.Status.Contains("cancelled") ||
-            i.Status.Contains("Cancelling")).ToList();
+        // 只保留"下载中"状态的任务
+        var notDownloading = Items.Where(i =>
+            !i.Status.Contains("下载") &&
+            !i.Status.Contains("Downloading") &&
+            !i.Status.Contains("下载中") &&
+            !i.Status.Contains("Connecting")).ToList();
 
         // 从数据库删除被清除项的记录
-        foreach (var item in done)
+        foreach (var item in notDownloading)
         {
             _recordService.DeleteRecord(item.Url);
         }
 
         App.Current.Dispatcher.Invoke(() =>
         {
-            foreach (var item in done) Items.Remove(item);
+            foreach (var item in notDownloading) Items.Remove(item);
         });
 
         // 如果队列为空，清空整个数据库

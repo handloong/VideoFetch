@@ -88,6 +88,9 @@
     <sys:String x:Key="Settings_CreateSubfolders">Create subfolders by website</sys:String>
     <sys:String x:Key="Settings_Network">Network Settings</sys:String>
     <sys:String x:Key="Settings_ProxyAddress">Proxy address (leave empty for no proxy)</sys:String>
+    <sys:String x:Key="Settings_Player">Playback</sys:String>
+    <sys:String x:Key="Settings_UseBuiltInPlayer">Use built-in player</sys:String>
+    <sys:String x:Key="Settings_BuiltInPlayerHint">Disable to use system default player (e.g. PotPlayer, VLC, MPC)</sys:String>
     <sys:String x:Key="Btn_SaveSettings">💾 Save Settings</sys:String>
 
     <!-- Language switcher -->

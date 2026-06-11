@@ -88,6 +88,9 @@
     <sys:String x:Key="Settings_CreateSubfolders">按网站自动创建子文件夹</sys:String>
     <sys:String x:Key="Settings_Network">网络设置</sys:String>
     <sys:String x:Key="Settings_ProxyAddress">代理地址（留空则不使用代理）</sys:String>
+    <sys:String x:Key="Settings_Player">播放设置</sys:String>
+    <sys:String x:Key="Settings_UseBuiltInPlayer">使用内置播放器</sys:String>
+    <sys:String x:Key="Settings_BuiltInPlayerHint">关闭则调用系统默认播放器（如 PotPlayer / MPC）</sys:String>
     <sys:String x:Key="Btn_SaveSettings">💾 保存设置</sys:String>
 
     <!-- Language switcher -->

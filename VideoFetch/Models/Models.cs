@@ -104,6 +104,7 @@ public class AppSettings
     public string DefaultQuality { get; set; } = "best";
     public bool AutoOpenFolder { get; set; } = false;
     public bool CreateSubfolders { get; set; } = false;
+    public bool UseBuiltInPlayer { get; set; } = false;
 }
 
 /// <summary>
