@@ -31,20 +31,19 @@ public partial class MainWindow : Window
         Services.LanguageService.SwitchLanguage(culture);
 
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) CloseImagePreview(); };
-
-        // Hook into the window's message loop to fix hit-testing for custom title bar buttons.
-        // With WindowStyle=None + WindowChrome, the entire caption area (top 38px) is
-        // treated as HTCAPTION, which swallows mouse clicks before they reach our buttons.
-        // We intercept WM_NCHITTEST and tell the OS: "if the mouse is over our buttons,
-        // treat it as HTCLIENT so WPF handles the click."
-        SourceInitialized += OnSourceInitialized;
     }
 
     /// <summary>
     /// Install WndProc hook after the window handle (HWND) is created.
+    /// Override (not event) ensures correct timing.
+    /// With WindowStyle=None + WindowChrome, the entire caption area (top 38px) is
+    /// treated as HTCAPTION, which swallows mouse clicks before they reach our buttons.
+    /// We intercept WM_NCHITTEST and tell the OS: "if the mouse is over our buttons,
+    /// treat it as HTCLIENT so WPF handles the click."
     /// </summary>
-    private void OnSourceInitialized(object? sender, EventArgs e)
+    protected override void OnSourceInitialized(EventArgs e)
     {
+        base.OnSourceInitialized(e);
         var hwnd = new WindowInteropHelper(this).Handle;
         var source = HwndSource.FromHwnd(hwnd);
         source?.AddHook(WndProc);
@@ -65,10 +64,24 @@ public partial class MainWindow : Window
         var screenY = (int)((lParam.ToInt64() >> 16) & 0xFFFF);
         var wpfPoint = PointFromScreen(new Point(screenX, screenY));
 
+        // Quick bounds check: if the point is within the title bar button area
+        // (right of the rightmost non-button element), return HTCLIENT.
+        // This is a faster fallback that doesn't require a full HitTest traversal.
+        if (TitleBarButtons.IsVisible)
+        {
+            var btnBounds = TitleBarButtons.TransformToAncestor(this).TransformBounds(
+                new Rect(0, 0, TitleBarButtons.ActualWidth, TitleBarButtons.ActualHeight));
+            if (btnBounds.Contains(wpfPoint))
+            {
+                handled = true;
+                return new IntPtr(HTCLIENT);
+            }
+        }
+
         // Hit-test: is the mouse over our custom buttons?
         var result = VisualTreeHelper.HitTest(this, wpfPoint);
         if (result == null)
-            return IntPtr.Zero;  // let OS decide (HTCAPTION for drag, HTxxx for resize)
+            return IntPtr.Zero;
 
         // Walk up the visual tree — if we hit a Button inside our TitleBarButtons
         // panel, force HTCLIENT so the click goes through to WPF.
@@ -126,23 +139,23 @@ public partial class MainWindow : Window
         {
             Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(url)),
             Stretch = System.Windows.Media.Stretch.Uniform,
-            MaxWidth = ActualWidth * 0.9,
-            MaxHeight = ActualHeight * 0.9
+            MaxWidth = ContentArea.ActualWidth * 0.9,
+            MaxHeight = ContentArea.ActualHeight * 0.9
         };
         _previewOverlay.Children.Add(_previewImage);
         _previewOverlay.MouseDown += (_, _) => CloseImagePreview();
         _previewOverlay.KeyDown += (_, e) => { if (e.Key == Key.Escape) CloseImagePreview(); };
 
-        var root = Content as System.Windows.Controls.Grid;
-        root?.Children.Add(_previewOverlay);
+        // Only cover the content area (Row 2), NOT the title bar
+        // so minimize/close buttons remain clickable.
+        ContentArea.Children.Add(_previewOverlay);
         _previewOverlay.Focus();
     }
 
     public void CloseImagePreview()
     {
         if (_previewOverlay == null) return;
-        var root = Content as System.Windows.Controls.Grid;
-        root?.Children.Remove(_previewOverlay);
+        ContentArea.Children.Remove(_previewOverlay);
         _previewOverlay = null;
         _previewImage = null;
     }

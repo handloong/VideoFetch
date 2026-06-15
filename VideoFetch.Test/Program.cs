@@ -4,8 +4,10 @@ using System.Threading.Tasks;
 using VideoFetch.Services;
 using VideoFetch.Services.Sites;
 
-// Quick integration test: verify all 3 sites' search works
+// Quick integration test: verify all 4 sites' search works
 var keyword = "teen";
+
+string Trunc(string? s, int max) => s == null ? "" : s.Length <= max ? s : s[..max];
 
 async Task TestSearch(ISiteParser parser)
 {
@@ -17,7 +19,7 @@ async Task TestSearch(ISiteParser parser)
         if (results.Count > 0)
         {
             foreach (var r in results.Take(3))
-                Console.WriteLine($"    -> {r.Title?.Substring(0, Math.Min(50, r.Title?.Length ?? 0))} | {r.Url?.Substring(0, 60)} | {r.Duration}");
+                Console.WriteLine($"    -> {Trunc(r.Title, 50)} | {Trunc(r.Url, 60)} | {r.Duration} | {r.Author}");
             
             if (results.Count > 3) 
                 Console.WriteLine($"    ... +{results.Count - 3} more results");
@@ -57,7 +59,8 @@ Console.WriteLine($"=== Search Integration Test: \"{keyword}\" ===\n");
 await Task.WhenAll(
     TestSearch(new PornHubParser()),
     TestSearch(new XVideosParser()),
-    TestSearch(new XNxxParser())
+    TestSearch(new XNxxParser()),
+    TestSearch(new PinSeParser())
 );
 
 Console.WriteLine("\nDone!");

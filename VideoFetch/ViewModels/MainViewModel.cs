@@ -133,7 +133,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Available sites for search dropdown
     /// </summary>
-    public List<SiteType> SupportedSites => new() { SiteType.PornHub, SiteType.XVideos, SiteType.XNxx };
+    public List<SiteType> SupportedSites => new() { SiteType.PornHub, SiteType.XVideos, SiteType.XNxx, SiteType.PinSe };
 
     /// <summary>
     /// Current page number for pagination
@@ -254,7 +254,7 @@ public partial class MainViewModel : ObservableObject
         {
             if (!_infoService.IsSupported(url))
             {
-                FetchStatusMessage = "This URL is not supported. Supported: PornHub, xvideos, xnxx";
+                FetchStatusMessage = "This URL is not supported. Supported: PornHub, xvideos, xnxx, 91pinse";
                 return;
             }
 

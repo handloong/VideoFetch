@@ -17,6 +17,7 @@ public class VideoInfoService
         new PornHubParser(),
         new XVideosParser(),
         new XNxxParser(),
+        new PinSeParser(),
     };
 
     public bool IsSupported(string url)
@@ -30,6 +31,7 @@ public class VideoInfoService
         if (url.Contains("pornhub.com") || url.Contains("pornhubpremium.com")) return SiteType.PornHub;
         if (url.Contains("xvideos.com")) return SiteType.XVideos;
         if (url.Contains("xnxx.com")) return SiteType.XNxx;
+        if (url.Contains("91pinse.com")) return SiteType.PinSe;
         return SiteType.Unknown;
     }
 
@@ -41,6 +43,7 @@ public class VideoInfoService
         SiteType.PornHub => _parsers.OfType<PornHubParser>().FirstOrDefault(),
         SiteType.XVideos => _parsers.OfType<XVideosParser>().FirstOrDefault(),
         SiteType.XNxx => _parsers.OfType<XNxxParser>().FirstOrDefault(),
+        SiteType.PinSe => _parsers.OfType<PinSeParser>().FirstOrDefault(),
         _ => null
     };
 

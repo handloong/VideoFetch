@@ -8,7 +8,8 @@ public enum SiteType
     Unknown,
     PornHub,
     XVideos,
-    XNxx
+    XNxx,
+    PinSe
 }
 
 /// <summary>

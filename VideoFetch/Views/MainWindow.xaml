@@ -96,7 +96,7 @@
         </Border>
 
         <!-- ════════════ MAIN CONTENT ════════════ -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" x:Name="ContentArea">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="340" MinWidth="260"/>
                 <ColumnDefinition Width="Auto"/>
