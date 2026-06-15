@@ -367,3 +367,8 @@ FodyWeavers.xsd
 # Publish output
 publish-fd/
 publish/
+publish-output/
+VideoFetch-*.zip
+
+# WorkBuddy workspace data
+.workbuddy/

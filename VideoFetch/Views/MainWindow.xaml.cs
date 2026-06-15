@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
 
 namespace VideoFetch.Views;
 
@@ -9,6 +11,11 @@ namespace VideoFetch.Views;
 /// </summary>
 public partial class MainWindow : Window
 {
+    // ── Win32 constants for WM_NCHITTEST override ──────
+    private const int WM_NCHITTEST = 0x0084;
+    private const int HTCLIENT    = 1;    // client area — WPF handles click
+    private const int HTCAPTION   = 2;    // title bar — OS handles drag/move
+
     public MainWindow()
     {
         InitializeComponent();
@@ -24,6 +31,60 @@ public partial class MainWindow : Window
         Services.LanguageService.SwitchLanguage(culture);
 
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) CloseImagePreview(); };
+
+        // Hook into the window's message loop to fix hit-testing for custom title bar buttons.
+        // With WindowStyle=None + WindowChrome, the entire caption area (top 38px) is
+        // treated as HTCAPTION, which swallows mouse clicks before they reach our buttons.
+        // We intercept WM_NCHITTEST and tell the OS: "if the mouse is over our buttons,
+        // treat it as HTCLIENT so WPF handles the click."
+        SourceInitialized += OnSourceInitialized;
+    }
+
+    /// <summary>
+    /// Install WndProc hook after the window handle (HWND) is created.
+    /// </summary>
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        var source = HwndSource.FromHwnd(hwnd);
+        source?.AddHook(WndProc);
+    }
+
+    /// <summary>
+    /// Intercept WM_NCHITTEST. When the mouse is over our custom minimize/close
+    /// buttons, force HTCLIENT so WPF can route the click to the Button element.
+    /// Otherwise let the default WindowChrome behavior handle it (drag, resize, etc.).
+    /// </summary>
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg != WM_NCHITTEST)
+            return IntPtr.Zero;
+
+        // Convert screen coordinates to WPF coordinates relative to this window
+        var screenX = (int)(lParam.ToInt64() & 0xFFFF);
+        var screenY = (int)((lParam.ToInt64() >> 16) & 0xFFFF);
+        var wpfPoint = PointFromScreen(new Point(screenX, screenY));
+
+        // Hit-test: is the mouse over our custom buttons?
+        var result = VisualTreeHelper.HitTest(this, wpfPoint);
+        if (result == null)
+            return IntPtr.Zero;  // let OS decide (HTCAPTION for drag, HTxxx for resize)
+
+        // Walk up the visual tree — if we hit a Button inside our TitleBarButtons
+        // panel, force HTCLIENT so the click goes through to WPF.
+        var element = result.VisualHit as DependencyObject;
+        while (element != null)
+        {
+            if (element == MinimizeBtn || element == CloseBtn)
+            {
+                handled = true;
+                return new IntPtr(HTCLIENT);
+            }
+            element = VisualTreeHelper.GetParent(element);
+        }
+
+        // Not over our buttons — let WindowChrome handle it normally
+        return IntPtr.Zero;
     }
 
     // ── Title bar drag ──────────────────────────────────
@@ -36,9 +97,16 @@ public partial class MainWindow : Window
 
     // ── Title bar buttons ───────────────────────────────
 
+    /// <summary>
+    /// Minimize the window. Works because WndProc ensures the button area
+    /// returns HTCLIENT so the click actually reaches this handler.
+    /// </summary>
     private void BtnMinimize_Click(object sender, RoutedEventArgs e)
         => WindowState = WindowState.Minimized;
 
+    /// <summary>
+    /// Close the window.
+    /// </summary>
     private void BtnClose_Click(object sender, RoutedEventArgs e)
         => Close();
 

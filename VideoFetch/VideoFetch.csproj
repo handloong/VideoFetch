@@ -8,7 +8,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>VideoFetch</AssemblyName>
     <RootNamespace>VideoFetch</RootNamespace>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <PublishSingleFile>true</PublishSingleFile>
     <ApplicationIcon>favicon.ico</ApplicationIcon>
   </PropertyGroup>

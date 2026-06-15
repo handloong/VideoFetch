@@ -51,10 +51,11 @@
                 <Grid Grid.Column="1" Background="Transparent"
                       MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right"
-                            VerticalAlignment="Stretch" WindowChrome.IsHitTestVisibleInChrome="True">
-                    <Button Style="{StaticResource MinimizeBtnStyle}" Click="BtnMinimize_Click"
+                            VerticalAlignment="Stretch" x:Name="TitleBarButtons"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinimizeBtn" Style="{StaticResource MinimizeBtnStyle}" Click="BtnMinimize_Click"
                             WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center"/>
-                    <Button Style="{StaticResource CloseBtnStyle}" Click="BtnClose_Click"
+                    <Button x:Name="CloseBtn" Style="{StaticResource CloseBtnStyle}" Click="BtnClose_Click"
                             WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
