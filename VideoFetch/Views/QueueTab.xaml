@@ -91,12 +91,5 @@
                 </GridView>
             </ListView.View>
         </ListView>
-
-        <!-- Empty state -->
-        <TextBlock Grid.Row="1" Text="{DynamicResource Queue_Empty}"
-                   Foreground="{StaticResource TextSecondaryBrush}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                   FontSize="13" IsHitTestVisible="False"
-                   Visibility="{Binding IsQueueEmpty, Converter={StaticResource BoolToVis}}"/>
     </Grid>
 </UserControl>

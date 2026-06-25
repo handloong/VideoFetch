@@ -133,7 +133,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Available sites for search dropdown
     /// </summary>
-    public List<SiteType> SupportedSites => new() { SiteType.PornHub, SiteType.XVideos, SiteType.XNxx, SiteType.PinSe };
+    public List<SiteType> SupportedSites => new() { SiteType.PinSe, SiteType.XVideos, SiteType.XNxx, SiteType.PornHub };
 
     /// <summary>
     /// Current page number for pagination

@@ -72,8 +72,8 @@ public class DownloadQueueService
 
         var safeTitle = MakeSafeFileName(info.Title);
         var ext = ".mp4";
-        var subDir = _settings.CreateSubfolders && !string.IsNullOrEmpty(info.Author)
-            ? Path.Combine(_settings.OutputDirectory, MakeSafeFileName(info.Author))
+        var subDir = _settings.CreateSubfolders 
+            ? Path.Combine(_settings.OutputDirectory, MakeSafeFileName(info.Site.ToString()))
             : _settings.OutputDirectory;
 
         Directory.CreateDirectory(subDir);

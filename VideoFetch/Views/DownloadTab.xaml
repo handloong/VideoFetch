@@ -69,7 +69,7 @@
             <StackPanel>
                 <TextBlock Text="{DynamicResource Label_SupportedSites}" FontSize="12" FontWeight="Medium"
                            Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6"/>
-                <TextBlock Text="PornHub · XVideos · XNXX" FontSize="12"
+                <TextBlock Text="91Pinse · PornHub · XVideos · XNXX" FontSize="12"
                            Foreground="{StaticResource TextPrimaryBrush}" TextWrapping="Wrap"/>
                 <Separator Margin="0,8"/>
                 <TextBlock Text="{DynamicResource Label_QuickTips}" FontSize="11" FontWeight="Medium"
