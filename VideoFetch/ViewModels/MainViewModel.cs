@@ -57,6 +57,14 @@ public partial class MainViewModel : ObservableObject
     public string AppVersion { get; } =
         System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0";
 
+    /// <summary>
+    /// Tab indices of MainWindow's TabControl:
+    /// 0=Search, 1=Category, 2=Queue, 3=Settings.
+    /// </summary>
+    public const int TabSearch = 0;
+    public const int TabCategory = 1;
+    public const int TabQueue = 2;
+
     // ── Settings ───────────────────────────────────────────────────────────
     [ObservableProperty]
     private AppSettings _settings;
@@ -133,7 +141,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Available sites for search dropdown
     /// </summary>
-    public List<SiteType> SupportedSites => new() { SiteType.PinSe, SiteType.XVideos, SiteType.XNxx, SiteType.PornHub };
+    public IReadOnlyList<SiteType> SupportedSites { get; } =
+        new[] { SiteType.PinSe, SiteType.XVideos, SiteType.XNxx, SiteType.PornHub };
 
     /// <summary>
     /// Current page number for pagination
@@ -160,11 +169,20 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public bool IsQueueEmpty => DownloadItems.Count == 0;
 
+    /// <summary>
+    /// Items whose PropertyChanged we subscribed to (for IsSelected tracking).
+    /// Needed because Clear() raises Reset with OldItems == null — without this
+    /// list the subscriptions would leak on every search.
+    /// </summary>
+    private readonly HashSet<SearchResult> _subscribedResults = new();
+
     public MainViewModel()
     {
         _settings = _settingsService.Load();
-        _recordService = new DownloadRecordService();
         _queue = new DownloadQueueService(_settings, _recordService);
+
+        // 应用代理设置（解析器/下载引擎共享同一个 handler）
+        HttpClientFactory.Configure(_settings.ProxyUrl);
 
         // Keep HasSearchResults in sync with SearchResults collection
         // Also update 1-based indices for display
@@ -172,6 +190,9 @@ public partial class MainViewModel : ObservableObject
 
         // Keep IsQueueEmpty in sync
         DownloadItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsQueueEmpty));
+
+        // Category results use the same selection/numbering plumbing as search results
+        CategoryResults.CollectionChanged += CategoryResults_CollectionChanged;
     }
 
     /// <summary>
@@ -180,45 +201,147 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void SearchResults_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
-        // Subscribe to new items' PropertyChanged (for IsSelected → batch count)
-        if (e.NewItems != null)
+        switch (e.Action)
         {
-            foreach (SearchResult item in e.NewItems)
-                item.PropertyChanged += SearchResult_PropertyChanged;
-        }
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
+                if (e.NewItems != null)
+                    foreach (SearchResult item in e.NewItems)
+                        if (_subscribedResults.Add(item))
+                            item.PropertyChanged += SearchResult_PropertyChanged;
+                break;
 
-        // Unsubscribe from removed items
-        if (e.OldItems != null)
-        {
-            foreach (SearchResult item in e.OldItems)
-                item.PropertyChanged -= SearchResult_PropertyChanged;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
+                if (e.OldItems != null)
+                    foreach (SearchResult item in e.OldItems)
+                        if (_subscribedResults.Remove(item))
+                            item.PropertyChanged -= SearchResult_PropertyChanged;
+                break;
+
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Reset:
+                // Clear() gives us no OldItems — unsubscribe via our own bookkeeping
+                foreach (var item in _subscribedResults)
+                    item.PropertyChanged -= SearchResult_PropertyChanged;
+                _subscribedResults.Clear();
+                break;
         }
 
         HasSearchResults = SearchResults.Count > 0;
         UpdateSelectedCount();
-        UpdateIndices();
+        UpdateIndices(SearchResults);
+    }
+
+    /// <summary>
+    /// Handles items being added/removed from CategoryResults (same plumbing as SearchResults).
+    /// </summary>
+    private void CategoryResults_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
+                if (e.NewItems != null)
+                    foreach (SearchResult item in e.NewItems)
+                        if (_subscribedCategoryResults.Add(item))
+                            item.PropertyChanged += SearchResult_PropertyChanged;
+                break;
+
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
+                if (e.OldItems != null)
+                    foreach (SearchResult item in e.OldItems)
+                        if (_subscribedCategoryResults.Remove(item))
+                            item.PropertyChanged -= SearchResult_PropertyChanged;
+                break;
+
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Reset:
+                foreach (var item in _subscribedCategoryResults)
+                    item.PropertyChanged -= SearchResult_PropertyChanged;
+                _subscribedCategoryResults.Clear();
+                break;
+        }
+
+        HasCategoryResults = CategoryResults.Count > 0;
+        UpdateCategorySelectedCount();
+        UpdateIndices(CategoryResults);
+    }
+
+    /// <summary>
+    /// Recalculate the category batch download count + button text.
+    /// </summary>
+    private void UpdateCategorySelectedCount()
+    {
+        SelectedCategoryResultCount = CategoryResults.Count(r => r.IsSelected);
+        BatchCategoryDownloadText = string.Format(
+            LanguageService.GetString("Btn_BatchDownload"), SelectedCategoryResultCount);
+    }
+
+    /// <summary>
+    /// Mark already-downloaded items, add to the target list, and start
+    /// background thumbnail loading. Shared by search and category browsing.
+    /// </summary>
+    private async Task PrepareResultsAsync(List<SearchResult> results, ObservableCollection<SearchResult> target)
+    {
+        foreach (var r in results)
+        {
+            var record = _recordService.GetByUrl(r.Url);
+            r.IsAlreadyDownloaded = record != null && record.FileExists;
+            r.LocalFilePath = record?.FilePath ?? string.Empty;
+            target.Add(r);
+        }
+
+        if (results.Count > 0)
+            _ = LoadThumbnailsAsync(results);
+    }
+
+    /// <summary>
+    /// Load small thumbnails in the background (max 6 concurrent) and assign
+    /// them to the results. Failures are ignored — the placeholder stays.
+    /// </summary>
+    private static async Task LoadThumbnailsAsync(IEnumerable<SearchResult> items)
+    {
+        var targets = items
+            .Where(i => i.ThumbnailImage == null && !string.IsNullOrWhiteSpace(i.ThumbnailUrl))
+            .ToList();
+        if (targets.Count == 0) return;
+
+        using var gate = new SemaphoreSlim(6);
+        var tasks = targets.Select(async item =>
+        {
+            try
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    var img = await ThumbnailLoader.LoadAsync(item.ThumbnailUrl);
+                    if (img != null)
+                        _ = App.Current.Dispatcher.BeginInvoke(() => item.ThumbnailImage = img);
+                }
+                finally { gate.Release(); }
+            }
+            catch { /* ignore single thumbnail failures */ }
+        });
+        await Task.WhenAll(tasks);
     }
 
     /// <summary>
     /// When a SearchResult's IsSelected property changes (user clicked checkbox),
-    /// recalculate the batch download count.
+    /// recalculate both collections' batch download counts.
     /// </summary>
     private void SearchResult_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(SearchResult.IsSelected))
         {
             UpdateSelectedCount();
+            UpdateCategorySelectedCount();
         }
     }
 
     /// <summary>
-    /// Update 1-based Index property on all SearchResults (for row numbering)
+    /// Update 1-based Index property on all results (for row numbering)
     /// </summary>
-    private void UpdateIndices()
+    private static void UpdateIndices(ObservableCollection<SearchResult> list)
     {
-        for (int i = 0; i < SearchResults.Count; i++)
+        for (int i = 0; i < list.Count; i++)
         {
-            SearchResults[i].Index = i + 1;
+            list[i].Index = i + 1;
         }
     }
 
@@ -296,8 +419,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         // 内存去重：同一URL正在排队/下载中
-        if (_queue.Items.Any(i => string.Equals(i.Url, url, StringComparison.OrdinalIgnoreCase)
-            && !i.IsCompleted && !i.HasFailed))
+        if (_queue.Items.Any(i => string.Equals(i.Url, url, StringComparison.OrdinalIgnoreCase) && i.IsActive))
         {
             FetchStatusMessage = "⚠️ 该视频已在下载队列中";
             return;
@@ -305,7 +427,7 @@ public partial class MainViewModel : ObservableObject
 
         _queue.Enqueue(VideoInfo, SelectedQuality.Value);
 
-        SelectedTab = 1; // Switch to queue tab
+        SelectedTab = TabQueue; // Switch to queue tab
 
         FetchStatusMessage = $"Added to queue: {VideoInfo.Title}";
         VideoInfo = null;
@@ -337,9 +459,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void OpenOutputFolder()
     {
-        var dir = Settings.OutputDirectory;
-        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        System.Diagnostics.Process.Start("explorer.exe", dir);
+        try
+        {
+            var dir = Settings.OutputDirectory;
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            System.Diagnostics.Process.Start("explorer.exe", dir);
+        }
+        catch (Exception ex)
+        {
+            FetchStatusMessage = $"无法打开文件夹: {ex.Message}";
+        }
     }
 
     [RelayCommand]
@@ -361,9 +490,10 @@ public partial class MainViewModel : ObservableObject
     private async Task SaveSettingsAsync()
     {
         _settingsService.Save(Settings);
-        // Rebuild queue service with new settings
-        _queue = new DownloadQueueService(Settings, _recordService);
-        OnPropertyChanged(nameof(DownloadItems));
+        // Apply new settings to the long-lived queue service (never rebuild it:
+        // rebuilding orphans in-flight downloads and breaks the Items binding)
+        _queue.ApplySettings();
+        HttpClientFactory.Configure(Settings.ProxyUrl);
 
         // Show save success message (auto-clear after 2.5 seconds)
         SettingsSavedMessage = "✅ 设置保存成功！";
@@ -479,14 +609,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var results = await _infoService.SearchAsync(SearchSite, query, page: 1);
-            foreach (var r in results)
-            {
-                // Check download history and mark if already downloaded
-                var record = _recordService.GetByUrl(r.Url);
-                r.IsAlreadyDownloaded = record != null && record.FileExists;
-                r.LocalFilePath = record?.FilePath ?? string.Empty;
-                SearchResults.Add(r);
-            }
+            await PrepareResultsAsync(results, SearchResults);
 
             HasMoreResults = results.Count >= 20; // assume more if we got a full page
             SearchStatusMessage = results.Count > 0
@@ -520,12 +643,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var results = await _infoService.SearchAsync(SearchSite, SearchQuery.Trim(), page: nextPage);
-            foreach (var r in results)
-            {
-                // Check download history for each new result too
-                r.IsAlreadyDownloaded = _recordService.IsDownloaded(r.Url);
-                SearchResults.Add(r);
-            }
+            await PrepareResultsAsync(results, SearchResults);
             CurrentPage = nextPage;
             HasMoreResults = results.Count >= 20;
             SearchStatusMessage = $"{SearchResults.Count} total results loaded";
@@ -545,6 +663,18 @@ public partial class MainViewModel : ObservableObject
     // ══════════════════════════════════════════════════════════
 
     /// <summary>
+    /// Route a result-related status message to the tab the result lives in
+    /// (search tab vs category tab).
+    /// </summary>
+    private void SetResultStatus(SearchResult? result, string message)
+    {
+        if (result != null && CategoryResults.Contains(result))
+            CategoryStatusMessage = message;
+        else
+            SearchStatusMessage = message;
+    }
+
+    /// <summary>
     /// When user double-clicks or clicks Select on a search result:
     /// 1. Fetch full video info from the URL
     /// 2. Auto-select best quality (first in list = highest)
@@ -553,54 +683,53 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task DownloadSearchResultAsync(SearchResult? result)
     {
-        var url = result?.Url ?? SelectedSearchResult?.Url;
+        var target = result ?? SelectedSearchResult;
+        var url = target?.Url;
         if (url is not string s || string.IsNullOrWhiteSpace(s)) return;
 
         // 去重检查1：已下载且文件存在
         if (_recordService.IsDownloaded(s))
         {
-            SearchStatusMessage = "⚠️ 该视频已下载过，文件已存在。如需重新下载请先删除本地文件。";
+            SetResultStatus(target, "⚠️ 该视频已下载过，文件已存在。如需重新下载请先删除本地文件。");
             return;
         }
 
         // 去重检查2：同一URL在下载队列中
-        if (_queue.Items.Any(i => string.Equals(i.Url, s, StringComparison.OrdinalIgnoreCase)
-            && !i.IsCompleted && !i.HasFailed))
+        if (_queue.Items.Any(i => string.Equals(i.Url, s, StringComparison.OrdinalIgnoreCase) && i.IsActive))
         {
-            SearchStatusMessage = "⚠️ 该视频已在下载队列中";
+            SetResultStatus(target, "⚠️ 该视频已在下载队列中");
             return;
         }
 
         // Show status: fetching info...
-        SearchStatusMessage = $"Preparing download: {result?.Title ?? "loading..."}";
+        SetResultStatus(target, $"Preparing download: {target?.Title ?? "loading..."}");
 
         try
         {
             if (!_infoService.IsSupported(s))
             {
-                SearchStatusMessage = $"Unsupported site: {s}";
+                SetResultStatus(target, $"Unsupported site: {s}");
                 return;
             }
 
             var info = await _infoService.FetchAsync(s);
-            if (info == null || info.Qualities.Count == 0)
+            if (info.Qualities.Count == 0)
             {
-                SearchStatusMessage = "Could not get video info or no qualities available.";
+                SetResultStatus(target, "Could not get video info or no qualities available.");
                 return;
             }
 
             // Auto-select best quality (first item = highest resolution)
-            var bestQuality = info.Qualities.FirstOrDefault();
-            if (bestQuality == null) bestQuality = info.Qualities[0];
+            var bestQuality = info.Qualities[0];
 
             // Enqueue download (recordService will be called by DownloadQueueService on completion)
             _queue.Enqueue(info, bestQuality.Value);
 
-            SearchStatusMessage = $"\u2705 Download started: {info.Title} ({bestQuality.Label})";
+            SetResultStatus(target, $"\u2705 Download started: {info.Title} ({bestQuality.Label})");
         }
         catch (Exception ex)
         {
-            SearchStatusMessage = $"Error: {ex.Message}";
+            SetResultStatus(target, $"Error: {ex.Message}");
         }
     }
 
@@ -635,9 +764,19 @@ public partial class MainViewModel : ObservableObject
     /// Skips already-downloaded videos by default (similar to Xunlei's dedup logic).
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanBatchDownload))]
-    private async Task BatchDownloadAsync()
+    private Task BatchDownloadAsync()
+        => BatchDownloadCoreAsync(SearchResults, m => SearchStatusMessage = m);
+
+    private bool CanBatchDownload() => SelectedResultCount > 0 && !IsSearching;
+
+    /// <summary>
+    /// Download all selected results (auto-select best quality for each).
+    /// Skips already-downloaded videos by default (similar to Xunlei's dedup logic).
+    /// Shared by the search tab and the category tab.
+    /// </summary>
+    private async Task BatchDownloadCoreAsync(IReadOnlyList<SearchResult> source, Action<string> setStatus)
     {
-        var selected = SearchResults.Where(r => r.IsSelected).ToList();
+        var selected = source.Where(r => r.IsSelected).ToList();
         if (selected.Count == 0) return;
 
         // 过滤掉已下载的视频（类似迅雷去重）
@@ -655,8 +794,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             // 检查2：已在下载队列中（排队中/下载中） → 跳过
-            if (_queue.Items.Any(i => string.Equals(i.Url, result.Url, StringComparison.OrdinalIgnoreCase)
-                && !i.IsCompleted && !i.HasFailed))
+            if (_queue.Items.Any(i => string.Equals(i.Url, result.Url, StringComparison.OrdinalIgnoreCase) && i.IsActive))
             {
                 skippedCount++;
                 continue;
@@ -668,17 +806,17 @@ public partial class MainViewModel : ObservableObject
         // 如果全部跳过
         if (toDownload.Count == 0)
         {
-            SearchStatusMessage = $"⚠️ 已跳过 {skippedCount} 个已下载过的视频 (本地文件存在)";
+            setStatus($"⚠️ 已跳过 {skippedCount} 个已下载过的视频 (本地文件存在)");
             return;
         }
 
         if (skippedCount > 0)
         {
-            SearchStatusMessage = $"批量下载: {toDownload.Count} 个视频 (跳过 {skippedCount} 个已下载)";
+            setStatus($"批量下载: {toDownload.Count} 个视频 (跳过 {skippedCount} 个已下载)");
         }
         else
         {
-            SearchStatusMessage = $"Preparing batch download: {toDownload.Count} videos...";
+            setStatus($"Preparing batch download: {toDownload.Count} videos...");
         }
 
         int successCount = 0;
@@ -691,7 +829,7 @@ public partial class MainViewModel : ObservableObject
                 if (!_infoService.IsSupported(result.Url)) { failCount++; continue; }
 
                 var info = await _infoService.FetchAsync(result.Url);
-                if (info == null || info.Qualities.Count == 0) { failCount++; continue; }
+                if (info.Qualities.Count == 0) { failCount++; continue; }
 
                 var bestQuality = info.Qualities[0];
                 _queue.Enqueue(info, bestQuality.Value);
@@ -700,15 +838,192 @@ public partial class MainViewModel : ObservableObject
             catch { failCount++; }
         }
 
-        SearchStatusMessage = $"\u2705 批量下载完成: 成功 {successCount} 个, 失败 {failCount} 个"
-            + (skippedCount > 0 ? $" (跳过 {skippedCount} 个已下载)" : "");
-        SelectedTab = 1; // Switch to queue tab
+        setStatus($"\u2705 批量下载完成: 成功 {successCount} 个, 失败 {failCount} 个"
+            + (skippedCount > 0 ? $" (跳过 {skippedCount} 个已下载)" : ""));
+        SelectedTab = TabQueue; // Switch to queue tab
 
-        // Clear selection after download
-        foreach (var item in SearchResults)
+        // Clear selection after download (counts refresh via PropertyChanged)
+        foreach (var item in source)
             item.IsSelected = false;
-        UpdateSelectedCount();
     }
 
-    private bool CanBatchDownload() => SelectedResultCount > 0 && !IsSearching;
+    // ══════════════════════════════════════════════════════════
+    //  CATEGORY BROWSE
+    // ══════════════════════════════════════════════════════════
+
+    /// <summary>Site whose categories are shown in the category tab.</summary>
+    [ObservableProperty]
+    private SiteType _categorySite = SiteType.PinSe;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LoadCategoriesCommand))]
+    private bool _isLoadingCategories;
+
+    [ObservableProperty]
+    private string _categoryStatusMessage = string.Empty;
+
+    /// <summary>Category tags of the selected site.</summary>
+    public ObservableCollection<CategoryItem> Categories { get; } = new();
+
+    [ObservableProperty]
+    private CategoryItem? _selectedCategory;
+
+    /// <summary>Videos of the currently browsed category.</summary>
+    public ObservableCollection<SearchResult> CategoryResults { get; } = new();
+
+    /// <summary>Tracked subscriptions for CategoryResults items (Reset has no OldItems).</summary>
+    private readonly HashSet<SearchResult> _subscribedCategoryResults = new();
+
+    [ObservableProperty]
+    private bool _hasCategoryResults;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BatchDownloadCategoryCommand))]
+    private int _selectedCategoryResultCount;
+
+    /// <summary>Formatted batch download button text (e.g. "⬇ 批量下载选中项 (3)").</summary>
+    [ObservableProperty]
+    private string _batchCategoryDownloadText = string.Empty;
+
+    [ObservableProperty]
+    private int _currentCategoryPage = 1;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(LoadMoreCategoryResultsCommand))]
+    private bool _hasMoreCategoryResults;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BatchDownloadCategoryCommand), nameof(LoadMoreCategoryResultsCommand))]
+    private bool _isBrowsingCategory;
+
+    /// <summary>The category currently being browsed (for pagination).</summary>
+    private CategoryItem? _browsedCategory;
+
+    partial void OnCategorySiteChanged(SiteType value)
+    {
+        // 切换站点后需要重新加载分类列表
+        Categories.Clear();
+        SelectedCategory = null;
+        _browsedCategory = null;
+        CategoryResults.Clear();
+        HasMoreCategoryResults = false;
+        CategoryStatusMessage = string.Empty;
+    }
+
+    /// <summary>
+    /// Load the category list of the selected site.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLoadCategories))]
+    private async Task LoadCategoriesAsync()
+    {
+        IsLoadingCategories = true;
+        Categories.Clear();
+        CategoryStatusMessage = string.Format(LanguageService.GetString("Cat_Loading"), CategorySite);
+
+        try
+        {
+            var categories = await _infoService.GetCategoriesAsync(CategorySite);
+            foreach (var c in categories)
+                Categories.Add(c);
+
+            CategoryStatusMessage = string.Format(
+                LanguageService.GetString("Cat_Loaded"), CategorySite, categories.Count);
+        }
+        catch (Exception ex)
+        {
+            CategoryStatusMessage = string.Format(
+                LanguageService.GetString("Cat_LoadFailed"), ex.Message);
+        }
+        finally
+        {
+            IsLoadingCategories = false;
+        }
+    }
+
+    private bool CanLoadCategories() => !IsLoadingCategories;
+
+    /// <summary>
+    /// Browse videos of a category (page 1, replacing previous results).
+    /// </summary>
+    [RelayCommand]
+    private async Task BrowseCategoryAsync(CategoryItem? category)
+    {
+        if (category == null || IsBrowsingCategory) return;
+
+        SelectedCategory = category;
+        _browsedCategory = category;
+        CurrentCategoryPage = 1;
+        CategoryResults.Clear();
+        HasMoreCategoryResults = false;
+
+        await BrowseCategoryPageAsync(category, 1);
+    }
+
+    /// <summary>
+    /// Append the next page of the currently browsed category.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLoadMoreCategoryResults))]
+    private async Task LoadMoreCategoryResultsAsync()
+    {
+        if (_browsedCategory == null) return;
+        await BrowseCategoryPageAsync(_browsedCategory, CurrentCategoryPage + 1);
+    }
+
+    private bool CanLoadMoreCategoryResults()
+        => !IsBrowsingCategory && HasMoreCategoryResults && _browsedCategory != null;
+
+    private async Task BrowseCategoryPageAsync(CategoryItem category, int page)
+    {
+        IsBrowsingCategory = true;
+        CategoryStatusMessage = string.Format(
+            LanguageService.GetString("Cat_Browsing"), category.Name, page);
+
+        try
+        {
+            var results = await _infoService.BrowseCategoryAsync(CategorySite, category.Key, page);
+            await PrepareResultsAsync(results, CategoryResults);
+
+            CurrentCategoryPage = page;
+            HasMoreCategoryResults = results.Count >= 20; // assume more if we got a full page
+            CategoryStatusMessage = results.Count > 0
+                ? string.Format(LanguageService.GetString("Cat_Browsed"), category.Name, results.Count)
+                : LanguageService.GetString("Cat_NoResults");
+        }
+        catch (Exception ex)
+        {
+            CategoryStatusMessage = string.Format(
+                LanguageService.GetString("Cat_BrowseError"), ex.Message);
+            HasMoreCategoryResults = false;
+        }
+        finally
+        {
+            IsBrowsingCategory = false;
+        }
+    }
+
+    /// <summary>Select all category results.</summary>
+    [RelayCommand]
+    private void SelectAllCategoryResults()
+    {
+        foreach (var item in CategoryResults)
+            item.IsSelected = true;
+    }
+
+    /// <summary>Invert selection of category results.</summary>
+    [RelayCommand]
+    private void InvertCategorySelection()
+    {
+        foreach (var item in CategoryResults)
+            item.IsSelected = !item.IsSelected;
+    }
+
+    /// <summary>
+    /// Batch download selected category results (shares the dedup logic
+    /// with the search tab's batch download).
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBatchCategoryDownload))]
+    private Task BatchDownloadCategoryAsync()
+        => BatchDownloadCoreAsync(CategoryResults, m => CategoryStatusMessage = m);
+
+    private bool CanBatchCategoryDownload() => SelectedCategoryResultCount > 0 && !IsBrowsingCategory;
 }

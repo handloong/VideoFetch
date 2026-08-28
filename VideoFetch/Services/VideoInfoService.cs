@@ -1,6 +1,7 @@
 using VideoFetch.Models;
 using VideoFetch.Services.Sites;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
 namespace VideoFetch.Services;
@@ -56,7 +57,9 @@ public class VideoInfoService
         var parser = _parsers.FirstOrDefault(p => p.CanHandle(url))
             ?? throw new NotSupportedException($"No parser found for URL: {url}");
 
-        var info = await parser.FetchVideoInfoAsync(url, ct);
+        var info = await parser.FetchVideoInfoAsync(url, ct)
+            ?? throw new InvalidOperationException(
+                $"无法获取视频信息，请检查链接是否有效以及网络是否可达（{url}）");
 
         // Fallback title
         if (string.IsNullOrEmpty(info.Title))
@@ -85,7 +88,55 @@ public class VideoInfoService
         return await parser.SearchAsync(query, page, ct);
     }
 
+    // ── CATEGORIES ─────────────────────────────────────────────
+
+    /// <summary>
+    /// List categories/tags of a site (live parse with built-in fallback).
+    /// </summary>
+    public async Task<List<CategoryItem>> GetCategoriesAsync(SiteType site, CancellationToken ct = default)
+    {
+        var parser = GetParser(site)
+            ?? throw new NotSupportedException($"Categories not supported for site: {site}");
+        return await parser.GetCategoriesAsync(ct);
+    }
+
+    /// <summary>
+    /// Browse videos of a category (key from GetCategoriesAsync).
+    /// </summary>
+    public async Task<List<SearchResult>> BrowseCategoryAsync(
+        SiteType site, string categoryKey, int page = 1, CancellationToken ct = default)
+    {
+        var parser = GetParser(site)
+            ?? throw new NotSupportedException($"Categories not supported for site: {site}");
+        return await parser.BrowseCategoryAsync(categoryKey, page, ct);
+    }
+
     // ── STREAM RESOLUTION ─────────────────────────────────────
+
+    /// <summary>
+    /// Pure (no network) resolution of "best"/"worst"/label keys to the concrete
+    /// StreamUrls key. Used by the queue to pick the output file extension before
+    /// downloading, and by ResolveStreamUrlAsync to pick the actual URL.
+    /// </summary>
+    public static string ResolveQualityKey(VideoInfo info, string qualityKey)
+    {
+        var keys = info.StreamUrls.Keys.ToList();
+        if (keys.Count == 0) return qualityKey;
+
+        if (qualityKey != "best" && qualityKey != "worst")
+        {
+            return keys.Contains(qualityKey)
+                ? qualityKey
+                : keys.FirstOrDefault(k => k != "best" && k != "worst") ?? keys[0];
+        }
+
+        // "best" / "worst": rank candidates by quality heuristic
+        var candidates = keys.Where(k => k != "mp4_api" && k != "best" && k != "worst").ToList();
+        if (candidates.Count == 0) candidates = keys;
+        return qualityKey == "best"
+            ? candidates.OrderByDescending(ParseQualityHeuristic).First()
+            : candidates.OrderBy(ParseQualityHeuristic).First();
+    }
 
     /// <summary>
     /// Resolve the actual download URL for a given quality key.
@@ -96,59 +147,37 @@ public class VideoInfoService
     public async Task<string> ResolveStreamUrlAsync(
         VideoInfo info, string qualityKey, CancellationToken ct = default)
     {
+        var key = ResolveQualityKey(info, qualityKey);
+
+        if (!info.StreamUrls.TryGetValue(key, out var url))
+        {
+            var fallback = info.StreamUrls.Values.FirstOrDefault();
+            if (fallback == null)
+                throw new InvalidOperationException("没有可用的视频流地址");
+            return fallback;
+        }
+
         // PornHub: resolve mp4_* keys by calling the get_media API
-        if (info.Site == SiteType.PornHub && qualityKey.StartsWith("mp4_"))
+        if (info.Site == SiteType.PornHub && key.StartsWith("mp4_"))
         {
-            return await ResolvePornHubMp4ApiAsync(info, qualityKey, ct);
+            var preferred = key.Length > 4 ? key[4..] : ""; // e.g. "720" from "mp4_720"
+            return await CallPornHubGetMediaApiAsync(url, info.Url, ct, preferred);
         }
 
-        // Generic "best" / "worst"
-        if (qualityKey == "best")
-        {
-            var best = info.StreamUrls.Keys
-                .Where(k => k != "mp4_api" && k != "best" && k != "worst")
-                .OrderByDescending(k => ParseQualityHeuristic(k))
-                .FirstOrDefault() ?? info.StreamUrls.Keys.First();
-            return info.StreamUrls[best];
-        }
+        // If the URL is a PornHub get_media API url, resolve it
+        if (url.Contains("/get_media"))
+            return await CallPornHubGetMediaApiAsync(url, info.Url, ct);
 
-        if (qualityKey == "worst")
-        {
-            var worst = info.StreamUrls.Keys
-                .Where(k => k != "mp4_api" && k != "best" && k != "worst")
-                .OrderBy(k => ParseQualityHeuristic(k))
-                .FirstOrDefault() ?? info.StreamUrls.Keys.Last();
-            return info.StreamUrls[worst];
-        }
-
-        // Direct lookup
-        if (info.StreamUrls.TryGetValue(qualityKey, out var url))
-        {
-            // If the URL is a PornHub get_media API url, resolve it
-            if (url.Contains("/get_media"))
-                return await CallPornHubGetMediaApiAsync(url, info.Url, ct);
-            return url;
-        }
-
-        // Fallback: return first available URL
-        return info.StreamUrls.Values.First();
+        return url;
     }
 
     /// <summary>
     /// Call PornHub's /video/get_media?s=... API to get time-limited signed MP4 direct URLs.
+    /// Returns the URL for <paramref name="preferredQuality"/> (e.g. "720") when available,
+    /// otherwise the highest quality.
     /// </summary>
-    private static async Task<string> ResolvePornHubMp4ApiAsync(
-        VideoInfo info, string qualityKey, CancellationToken ct)
-    {
-        // Find the API URL — it's stored under the "mp4_*" key in StreamUrls
-        if (!info.StreamUrls.TryGetValue(qualityKey, out var apiUrl))
-            throw new InvalidOperationException($"No stream URL found for key: {qualityKey}");
-
-        return await CallPornHubGetMediaApiAsync(apiUrl, info.Url, ct);
-    }
-
     private static async Task<string> CallPornHubGetMediaApiAsync(
-        string apiUrl, string pageUrl, CancellationToken ct)
+        string apiUrl, string pageUrl, CancellationToken ct, string preferredQuality = "")
     {
         var client = HttpClientFactory.GetClient();
         var req = new HttpRequestMessage(HttpMethod.Get, apiUrl);
@@ -175,10 +204,19 @@ public class VideoInfoService
         if (mp4Map.Count == 0)
             throw new InvalidOperationException("PornHub mp4 API returned no usable URLs.");
 
-        // Also update VideoInfo.StreamUrls with the fresh signed URLs (side effect on info is not possible here
-        // since info is not passed — caller should do this)
+        // Prefer the quality the user actually selected (e.g. "720" → "720p")
+        if (!string.IsNullOrEmpty(preferredQuality))
+        {
+            var digits = Regex.Match(preferredQuality, @"\d{3,4}").Value;
+            if (digits.Length > 0)
+            {
+                var match = mp4Map.FirstOrDefault(kv =>
+                    Regex.Match(kv.Key, @"\d{3,4}").Value == digits);
+                if (match.Value != null) return match.Value;
+            }
+        }
 
-        // Return the highest quality URL by default
+        // Fallback: highest quality available
         return mp4Map
             .OrderByDescending(kv => ParseQualityHeuristic(kv.Key))
             .First().Value;
@@ -187,7 +225,16 @@ public class VideoInfoService
     private static int ParseQualityHeuristic(string key)
     {
         // Extract numeric quality from keys like "1080p", "hls_1080", "mp4_720"
-        var m = System.Text.RegularExpressions.Regex.Match(key, @"(\d{3,4})");
-        return m.Success ? int.Parse(m.Groups[1].Value) : 0;
+        var m = Regex.Match(key, @"(\d{3,4})");
+        if (m.Success) return int.Parse(m.Groups[1].Value);
+
+        // Non-numeric keys: rank by known labels
+        return key.ToLowerInvariant() switch
+        {
+            var k when k.Contains("high") || k.Contains("direct") => 1000,
+            var k when k.Contains("hls") => 900,
+            var k when k.Contains("low") => 100,
+            _ => 0
+        };
     }
 }

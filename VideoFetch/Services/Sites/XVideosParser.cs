@@ -11,7 +11,7 @@ namespace VideoFetch.Services.Sites;
 public class XVideosParser : ISiteParser
 {
     public SiteType Site => SiteType.XVideos;
-    private static readonly HttpClient _client = HttpClientFactory.GetClient();
+    // Get the shared client per call so a proxy change (HttpClientFactory.Configure) takes effect
 
     public bool CanHandle(string url)
         => !string.IsNullOrWhiteSpace(url) && url.Contains("xvideos.com");
@@ -21,7 +21,7 @@ public class XVideosParser : ISiteParser
         var info = new VideoInfo { Url = url, Site = Site };
         try
         {
-            var resp = await _client.GetAsync(url, ct);
+            var resp = await HttpClientFactory.GetClient().GetAsync(url, ct);
             if (!resp.IsSuccessStatusCode) return null;
             var html = await resp.Content.ReadAsStringAsync(ct);
             var doc = new HtmlAgilityPack.HtmlDocument();
@@ -139,12 +139,124 @@ public class XVideosParser : ISiteParser
         var searchUrl = $"https://www.xvideos.com/?k={Uri.EscapeDataString(query)}&p={page}";
         try
         {
-            var resp = await _client.GetAsync(searchUrl, ct);
+            var resp = await HttpClientFactory.GetClient().GetAsync(searchUrl, ct);
             if (!resp.IsSuccessStatusCode) return results;
             var html = await resp.Content.ReadAsStringAsync(ct);
             return ParseSearchHtml(html);
         }
         catch { return results; }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CATEGORIES
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>Fallback category keywords (browsed via keyword search).</summary>
+    private static readonly (string Key, string Name)[] CuratedCategories =
+    [
+        ("amateur", "Amateur"), ("anal", "Anal"), ("asian", "Asian"), ("bbw", "BBW"),
+        ("big ass", "Big Ass"), ("big tits", "Big Tits"), ("blonde", "Blonde"),
+        ("brunette", "Brunette"), ("creampie", "Creampie"), ("cumshot", "Cumshot"),
+        ("ebony", "Ebony"), ("hentai", "Hentai"), ("interracial", "Interracial"),
+        ("japanese", "Japanese"), ("latina", "Latina"), ("lesbian", "Lesbian"),
+        ("milf", "MILF"), ("public", "Public"), ("redhead", "Redhead"),
+        ("teen", "Teen"), ("threesome", "Threesome"), ("webcam", "Webcam"),
+    ];
+
+    /// <summary>
+    /// List XVideos categories. Tries the live /categories page (links to /c/...)
+    /// first; falls back to a built-in keyword list.
+    /// </summary>
+    public async Task<List<CategoryItem>> GetCategoriesAsync(CancellationToken ct = default)
+    {
+        var results = new List<CategoryItem>();
+        try
+        {
+            var resp = await HttpClientFactory.GetClient().GetAsync("https://www.xvideos.com/categories", ct);
+            if (resp.IsSuccessStatusCode)
+            {
+                var html = await resp.Content.ReadAsStringAsync(ct);
+                var doc = new HtmlAgilityPack.HtmlDocument();
+                doc.LoadHtml(html);
+
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var a in doc.DocumentNode.SelectNodes("//a[@href]") ?? Enumerable.Empty<HtmlAgilityPack.HtmlNode>())
+                {
+                    var href = a.GetAttributeValue("href", "");
+                    if (string.IsNullOrEmpty(href) || !href.Contains("/c/", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var path = href.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                        ? Uri.TryCreate(href, UriKind.Absolute, out var u) ? u.AbsolutePath : ""
+                        : href.Split('?')[0];
+                    path = path.TrimEnd('/');
+                    if (!path.StartsWith("/c/") || path.Length <= 3) continue;
+                    var key = path[3..];
+                    if (!seen.Add(key)) continue;
+
+                    var name = System.Net.WebUtility.HtmlDecode(a.InnerText ?? "").Trim();
+                    if (string.IsNullOrWhiteSpace(name))
+                        name = key.Split('-')[0].Replace('_', ' ');
+
+                    results.Add(new CategoryItem
+                    {
+                        Name = name,
+                        Key = path,          // "/c/xxx" → path-based browse
+                        Site = SiteType.XVideos
+                    });
+                }
+            }
+        }
+        catch
+        {
+            // Live parse failed — fall back to the curated list below
+        }
+
+        if (results.Count == 0)
+        {
+            results.AddRange(CuratedCategories.Select(c => new CategoryItem
+            {
+                Name = c.Name,
+                Key = c.Key,             // plain keyword → browsed via search
+                Site = SiteType.XVideos
+            }));
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// Browse an XVideos category. Keys are either a "/c/xxx" path (from the live
+    /// categories page) or a plain keyword (curated fallback → keyword search).
+    /// </summary>
+    public async Task<List<SearchResult>> BrowseCategoryAsync(string categoryKey, int page = 1, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(categoryKey)) return new List<SearchResult>();
+
+        // Keyword key → straight to search
+        if (!categoryKey.StartsWith("/"))
+            return await SearchAsync(categoryKey, page, ct);
+
+        // Path-based category page; pagination appends /{page}
+        var url = "https://www.xvideos.com" + categoryKey;
+        if (page > 1) url += $"/{page}";
+        try
+        {
+            var resp = await HttpClientFactory.GetClient().GetAsync(url, ct);
+            if (resp.IsSuccessStatusCode)
+            {
+                var html = await resp.Content.ReadAsStringAsync(ct);
+                var parsed = ParseSearchHtml(html);
+                if (parsed.Count > 0) return parsed;
+            }
+        }
+        catch
+        {
+            // fall through to keyword search below
+        }
+
+        // Category page failed → search with the category slug
+        var slug = categoryKey.Split('/').LastOrDefault() ?? "";
+        return await SearchAsync(slug.Split('-')[0].Replace('_', ' '), page, ct);
     }
 
     // ═══════════════════════════════════════════════════════
@@ -200,9 +312,7 @@ public class XVideosParser : ISiteParser
 
             // Thumbnail
             var imgNode = item.SelectSingleNode(".//img");
-            var thumb = imgNode?.GetAttributeValue("src", "")
-                        ?? imgNode?.GetAttributeValue("data-src", "")
-                        ?? imgNode?.GetAttributeValue("data-cover", "");
+            var thumb = ParserHelper.GetThumbUrl(imgNode);
 
             results.Add(new SearchResult
             {

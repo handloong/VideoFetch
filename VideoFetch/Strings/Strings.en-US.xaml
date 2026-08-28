@@ -42,7 +42,20 @@
     <sys:String x:Key="Col_Checkbox">☐</sys:String>
     <sys:String x:Key="Col_Title">Title</sys:String>
     <sys:String x:Key="Col_Source">Source</sys:String>
+    <sys:String x:Key="Col_Duration">Duration</sys:String>
     <sys:String x:Key="Col_Download">Action</sys:String>
+
+    <!-- Category tab -->
+    <sys:String x:Key="Tab_Category">🗂 Categories</sys:String>
+    <sys:String x:Key="Btn_LoadCategories">🔄 Load Categories</sys:String>
+    <sys:String x:Key="Cat_Loading">Loading {0} categories...</sys:String>
+    <sys:String x:Key="Cat_Loaded">{0}: {1} categories — click a tag to browse videos</sys:String>
+    <sys:String x:Key="Cat_LoadFailed">Live category parsing failed, using built-in list ({0})</sys:String>
+    <sys:String x:Key="Cat_Browsing">Browsing "{0}" page {1}...</sys:String>
+    <sys:String x:Key="Cat_Browsed">"{0}": {1} videos loaded</sys:String>
+    <sys:String x:Key="Cat_NoResults">No videos found in this category</sys:String>
+    <sys:String x:Key="Cat_BrowseError">Category browsing failed: {0}</sys:String>
+    <sys:String x:Key="Empty_CategoryResults">Pick a site and click "Load Categories", then click a category tag to browse videos. Double-click a row to preview its thumbnail.</sys:String>
 
     <!-- Batch actions -->
     <sys:String x:Key="Btn_SelectAll">☑ Select All</sys:String>
@@ -55,7 +68,7 @@
     <sys:String x:Key="Tip_IncludeDownloaded">When checked, previously downloaded videos will be re-downloaded (like Xunlei force re-download)</sys:String>
 
     <!-- Empty state -->
-    <sys:String x:Key="Empty_SearchResults">Type keywords above and click Search, or load categories below.</sys:String>
+    <sys:String x:Key="Empty_SearchResults">Type keywords above and click Search, or switch to the Categories tab to browse by category.</sys:String>
 
     <!-- Search status messages -->
     <sys:String x:Key="Status_Searching">Searching {0} for "{1}"...</sys:String>

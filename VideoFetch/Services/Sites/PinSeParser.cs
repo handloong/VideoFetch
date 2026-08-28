@@ -26,7 +26,7 @@ public class PinSeParser : ISiteParser
         "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
     private const string LangHdr = "zh-CN,zh;q=0.9,en;q=0.8";
 
-    private static readonly HttpClient _client = HttpClientFactory.GetClient();
+    // Get the shared client per call so a proxy change (HttpClientFactory.Configure) takes effect
 
     // ── ISiteParser ─────────────────────────────────────────
 
@@ -59,7 +59,7 @@ public class PinSeParser : ISiteParser
             req.Headers.TryAddWithoutValidation("Accept", AcceptHdr);
             req.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
 
-            using var resp = await _client.SendAsync(req, ct);
+            using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
             resp.EnsureSuccessStatusCode();
             var finalUrl = resp.RequestMessage?.RequestUri?.ToString() ?? url;
             var html = await resp.Content.ReadAsStringAsync(ct);
@@ -95,7 +95,7 @@ public class PinSeParser : ISiteParser
                     r2.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
                     r2.Headers.Referrer = new Uri(finalUrl);
 
-                    using var resp2 = await _client.SendAsync(r2, ct);
+                    using var resp2 = await HttpClientFactory.GetClient().SendAsync(r2, ct);
                     resp2.EnsureSuccessStatusCode();
                     var iframeHtml = await resp2.Content.ReadAsStringAsync(ct);
 
@@ -143,7 +143,7 @@ public class PinSeParser : ISiteParser
             req.Headers.TryAddWithoutValidation("Accept", AcceptHdr);
             req.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
 
-            using var resp = await _client.SendAsync(req, ct);
+            using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
             if (!resp.IsSuccessStatusCode) return results;
             var html = await resp.Content.ReadAsStringAsync(ct);
 
@@ -153,6 +153,28 @@ public class PinSeParser : ISiteParser
         {
             return results;
         }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CATEGORIES
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>
+    /// 91Pinse has no dedicated category listing page; categories are tag
+    /// keywords browsed through the site's keyword search (the default
+    /// BrowseCategoryAsync implementation calls SearchAsync).
+    /// </summary>
+    private static readonly string[] CuratedCategories =
+    [
+        "国产", "中文字幕", "日韩", "欧美", "动漫",
+        "探花", "直播", "网红", "自拍", "剧情",
+    ];
+
+    public Task<List<CategoryItem>> GetCategoriesAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult(CuratedCategories
+            .Select(k => new CategoryItem { Name = k, Key = k, Site = SiteType.PinSe })
+            .ToList());
     }
 
     // ═══════════════════════════════════════════════════════

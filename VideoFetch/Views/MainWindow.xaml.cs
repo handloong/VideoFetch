@@ -127,6 +127,23 @@ public partial class MainWindow : Window
 
     public void ShowImagePreview(string url, string title)
     {
+        // 解码缩略图：加载失败（无效URL/网络错误）时直接放弃预览，不让应用崩溃
+        System.Windows.Media.Imaging.BitmapSource? source;
+        try
+        {
+            var bmp = new System.Windows.Media.Imaging.BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bmp.UriSource = new Uri(url);
+            bmp.EndInit();
+            bmp.Freeze();
+            source = bmp;
+        }
+        catch
+        {
+            return;
+        }
+
         CloseImagePreview();
         _previewOverlay = new System.Windows.Controls.Grid
         {
@@ -137,7 +154,7 @@ public partial class MainWindow : Window
         };
         _previewImage = new System.Windows.Controls.Image
         {
-            Source = new System.Windows.Media.Imaging.BitmapImage(new System.Uri(url)),
+            Source = source,
             Stretch = System.Windows.Media.Stretch.Uniform,
             MaxWidth = ContentArea.ActualWidth * 0.9,
             MaxHeight = ContentArea.ActualHeight * 0.9

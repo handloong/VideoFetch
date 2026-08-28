@@ -84,13 +84,15 @@ public class StatusToColorConverter : IValueConverter
         var status = value?.ToString() ?? "";
         return status switch
         {
-            "Completed" => new System.Windows.Media.SolidColorBrush(
+            "Completed" or "已完成" => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x4C, 0xAF, 0x50)),
             var s when s.StartsWith("Failed") => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0xF4, 0x43, 0x36)),
             "Downloading" => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x7C, 0x6F, 0xF7)),
             "Queued" => new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x99, 0x99, 0xAA)),
+            "Cancelled" or "Cancelling..." => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x99, 0x99, 0xAA)),
             _ => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0xFF, 0x98, 0x00))

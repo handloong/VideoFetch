@@ -14,6 +14,10 @@ namespace VideoFetch.Services;
 /// Reports progress through Action callbacks.
 ///
 /// PornHub HLS URLs require Referer + Cookie headers — pass pageUrl to enable this.
+///
+/// HLS segments are concatenated into a raw MPEG-TS stream and then remuxed to MP4
+/// with ffmpeg when available (same as yt-dlp); otherwise the .ts file is kept
+/// (VLC/PotPlayer can play it, but it is not a real MP4 container).
 /// </summary>
 public class DownloadEngine
 {
@@ -21,15 +25,24 @@ public class DownloadEngine
 
     public DownloadEngine(int maxSegmentThreads = 8)
     {
-        _maxSegmentThreads = maxSegmentThreads;
+        _maxSegmentThreads = Math.Max(1, maxSegmentThreads);
     }
 
     /// <summary>
-    /// Download a video from the given stream URL to outputPath.
+    /// Decide whether a stream URL points to HLS content (shared with the queue
+    /// so the output extension can be chosen before the download starts).
+    /// </summary>
+    public static bool IsHlsUrl(string streamUrl)
+        => streamUrl.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
+           || streamUrl.Contains("hls", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Download a video from the given stream URL.
     /// Handles both HLS and direct URLs automatically.
     /// </summary>
     /// <param name="pageUrl">Original video page URL — used as Referer for CDN auth (PornHub etc.)</param>
-    public async Task DownloadAsync(
+    /// <returns>The final output path (may differ from outputPath when HLS was remuxed to MP4)</returns>
+    public async Task<string> DownloadAsync(
         string streamUrl,
         string outputPath,
         string pageUrl = "",
@@ -38,28 +51,27 @@ public class DownloadEngine
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
-        if (streamUrl.Contains(".m3u8") || streamUrl.Contains("hls"))
+        if (IsHlsUrl(streamUrl))
         {
-            await DownloadHlsAsync(streamUrl, outputPath, pageUrl, onProgress, ct);
+            return await DownloadHlsAsync(streamUrl, outputPath, pageUrl, onProgress, ct);
         }
-        else
-        {
-            await DownloadDirectAsync(streamUrl, outputPath, pageUrl, onProgress, ct);
-        }
+
+        await DownloadDirectAsync(streamUrl, outputPath, pageUrl, onProgress, ct);
+        return outputPath;
     }
 
     // ─────────────────────────────────────────
     //  HLS / M3U8 download
     // ─────────────────────────────────────────
 
-    private async Task DownloadHlsAsync(
+    private async Task<string> DownloadHlsAsync(
         string m3u8Url,
         string outputPath,
         string pageUrl,
         Action<double, string>? onProgress,
         CancellationToken ct)
     {
-        var client = HttpClientFactory.GetClient();
+        var client = HttpClientFactory.GetDownloadClient();
 
         // 1. Fetch M3U8 playlist (with Referer/Cookie if pageUrl provided)
         var m3u8Content = await FetchTextAsync(client, m3u8Url, pageUrl, ct);
@@ -112,15 +124,93 @@ public class DownloadEngine
             ct.ThrowIfCancellationRequested();
             onProgress?.Invoke(99, "Merging segments...");
 
-            // 4. Concatenate all .ts files into final output
+            // 4. Concatenate all .ts files into the final output
             await ConcatenateSegmentsAsync(tempDir, total, outputPath, ct);
-
-            onProgress?.Invoke(100, "Done");
         }
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { }
         }
+
+        // 5. Remux raw TS → MP4 with ffmpeg when available
+        var finalPath = await TryRemuxToMp4Async(outputPath, ct);
+        onProgress?.Invoke(100, "Done");
+        return finalPath;
+    }
+
+    /// <summary>
+    /// Remux a raw .ts stream into a proper .mp4 container using ffmpeg
+    /// (stream copy, no re-encode). Returns the original path when ffmpeg
+    /// is unavailable or the remux fails.
+    /// </summary>
+    private static async Task<string> TryRemuxToMp4Async(string tsPath, CancellationToken ct)
+    {
+        if (!tsPath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase)) return tsPath;
+
+        var ffmpeg = FindFfmpeg();
+        if (ffmpeg == null) return tsPath;
+
+        var mp4Path = Path.Combine(
+            Path.GetDirectoryName(tsPath)!,
+            Path.GetFileNameWithoutExtension(tsPath) + ".mp4");
+
+        // Don't overwrite an existing MP4 from an earlier download
+        if (File.Exists(mp4Path))
+        {
+            var dir = Path.GetDirectoryName(mp4Path)!;
+            var name = Path.GetFileNameWithoutExtension(mp4Path);
+            for (int i = 1; i < 1000; i++)
+            {
+                var candidate = Path.Combine(dir, $"{name} ({i}).mp4");
+                if (!File.Exists(candidate)) { mp4Path = candidate; break; }
+            }
+        }
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpeg,
+                Arguments = $"-y -loglevel error -i \"{tsPath}\" -c copy -movflags +faststart \"{mp4Path}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+            };
+            using var process = Process.Start(psi);
+            if (process == null) return tsPath;
+
+            _ = process.StandardError.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            if (process.ExitCode != 0 || !File.Exists(mp4Path) || new FileInfo(mp4Path).Length == 0)
+            {
+                try { File.Delete(mp4Path); } catch { }
+                return tsPath;
+            }
+
+            File.Delete(tsPath);
+            return mp4Path;
+        }
+        catch
+        {
+            try { File.Delete(mp4Path); } catch { }
+            return tsPath;
+        }
+    }
+
+    /// <summary>
+    /// Locate ffmpeg: next to the executable first, then on PATH.
+    /// </summary>
+    private static string? FindFfmpeg()
+    {
+        var local = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
+        if (File.Exists(local)) return local;
+
+        var pathDirs = Environment.GetEnvironmentVariable("PATH")?
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? Array.Empty<string>();
+        return pathDirs
+            .Select(dir => Path.Combine(dir, "ffmpeg.exe"))
+            .FirstOrDefault(File.Exists);
     }
 
     /// <summary>
@@ -242,54 +332,54 @@ public class DownloadEngine
         Action<double, string>? onProgress,
         CancellationToken ct)
     {
-        var client = HttpClientFactory.GetClient();
-        HttpResponseMessage response;
+        var client = HttpClientFactory.GetDownloadClient();
 
+        HttpRequestMessage? req = null;
         if (!string.IsNullOrEmpty(pageUrl))
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Add("Referer", pageUrl);
             req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1");
-            response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-        }
-        else
-        {
-            response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         }
 
-        response.EnsureSuccessStatusCode();
-
-        var totalBytes = response.Content.Headers.ContentLength ?? -1;
-        await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        await using var output = new FileStream(outputPath, FileMode.Create, FileAccess.Write,
-            FileShare.None, bufferSize: 64 * 1024, useAsync: true);
-
-        var buffer = new byte[64 * 1024];
-        long downloaded = 0;
-        int read;
-        var sw = Stopwatch.StartNew();
-        long lastBytes = 0;
-
-        while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+        using (req)
+        using (var response = req != null
+            ? await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
+            : await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
         {
-            await output.WriteAsync(buffer.AsMemory(0, read), ct);
-            downloaded += read;
+            response.EnsureSuccessStatusCode();
 
-            if (sw.ElapsedMilliseconds > 500)
+            var totalBytes = response.Content.Headers.ContentLength ?? -1;
+            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            await using var output = new FileStream(outputPath, FileMode.Create, FileAccess.Write,
+                FileShare.None, bufferSize: 64 * 1024, useAsync: true);
+
+            var buffer = new byte[64 * 1024];
+            long downloaded = 0;
+            int read;
+            var sw = Stopwatch.StartNew();
+            long lastBytes = 0;
+
+            while ((read = await stream.ReadAsync(buffer, ct)) > 0)
             {
-                var speedBps = (downloaded - lastBytes) / (sw.Elapsed.TotalSeconds);
-                lastBytes = downloaded;
-                sw.Restart();
-                var speedStr = speedBps > 1_000_000
-                    ? $"{speedBps / 1_000_000.0:F1} MB/s"
-                    : $"{speedBps / 1_000.0:F0} KB/s";
+                await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                downloaded += read;
 
-                var percent = totalBytes > 0 ? (double)downloaded / totalBytes * 100.0 : -1;
-                onProgress?.Invoke(percent, speedStr);
+                if (sw.ElapsedMilliseconds > 500)
+                {
+                    var speedBps = (downloaded - lastBytes) / (sw.Elapsed.TotalSeconds);
+                    lastBytes = downloaded;
+                    sw.Restart();
+                    var speedStr = speedBps > 1_000_000
+                        ? $"{speedBps / 1_000_000.0:F1} MB/s"
+                        : $"{speedBps / 1_000.0:F0} KB/s";
+
+                    var percent = totalBytes > 0 ? (double)downloaded / totalBytes * 100.0 : -1;
+                    onProgress?.Invoke(percent, speedStr);
+                }
             }
         }
 
         onProgress?.Invoke(100, "Done");
-        response.Dispose();
     }
 }

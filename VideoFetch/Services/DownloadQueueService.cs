@@ -8,15 +8,18 @@ namespace VideoFetch.Services;
 /// <summary>
 /// Manages the download queue - tracks active, queued, and completed downloads.
 /// Enforces a max concurrent download limit.
+///
+/// The service is created once at startup and shared for the app's lifetime.
+/// Settings changes are applied via ApplySettings() instead of recreating the
+/// service (recreating it would orphan in-flight downloads and break UI bindings).
 /// </summary>
 public class DownloadQueueService
 {
-    private readonly int _maxConcurrent;
-    private readonly DownloadEngine _engine;
-    private readonly VideoInfoService _infoService;
-    private readonly SemaphoreSlim _concurrencySemaphore;
     private readonly AppSettings _settings;
     private readonly DownloadRecordService _recordService;
+    private readonly VideoInfoService _infoService;
+    private readonly SemaphoreSlim _concurrencySemaphore;
+    private int _currentMaxConcurrent;
 
     public ObservableCollection<DownloadItem> Items { get; } = new();
 
@@ -24,13 +27,29 @@ public class DownloadQueueService
     {
         _settings = settings;
         _recordService = recordService;
-        _maxConcurrent = settings.MaxConcurrentDownloads;
-        _engine = new DownloadEngine(settings.MaxSegmentThreads);
         _infoService = new VideoInfoService();
-        _concurrencySemaphore = new SemaphoreSlim(_maxConcurrent, _maxConcurrent);
+        _currentMaxConcurrent = Math.Max(1, settings.MaxConcurrentDownloads);
+        _concurrencySemaphore = new SemaphoreSlim(_currentMaxConcurrent, _currentMaxConcurrent);
 
         // 启动时加载历史下载记录
         LoadHistory();
+    }
+
+    /// <summary>
+    /// Apply changed settings without rebuilding the service.
+    /// - Proxy: HttpClientFactory.Configure is called by the ViewModel.
+    /// - MaxConcurrentDownloads: the semaphore grows immediately; shrinking
+    ///   takes effect on app restart (tokens already issued can't be revoked).
+    /// - MaxSegmentThreads: picked up automatically per download.
+    /// </summary>
+    public void ApplySettings()
+    {
+        var target = Math.Max(1, _settings.MaxConcurrentDownloads);
+        if (target > _currentMaxConcurrent)
+        {
+            _concurrencySemaphore.Release(target - _currentMaxConcurrent);
+            _currentMaxConcurrent = target;
+        }
     }
 
     /// <summary>
@@ -41,6 +60,7 @@ public class DownloadQueueService
     {
         foreach (var rec in _recordService.GetAllRecords())
         {
+            var fileExists = System.IO.File.Exists(rec.FilePath);
             Items.Add(new DownloadItem
             {
                 Title = rec.Title,
@@ -48,37 +68,36 @@ public class DownloadQueueService
                 OutputPath = rec.FilePath,
                 Quality = rec.Quality,
                 Progress = 100,
-                IsCompleted = System.IO.File.Exists(rec.FilePath),
-                Status = System.IO.File.Exists(rec.FilePath) ? "已完成" : "文件已删除",
+                IsCompleted = fileExists,
+                Status = fileExists ? "已完成" : "文件已删除",
                 Speed = string.Empty,
                 AddedAt = rec.DownloadedAt,
-                CancellationSource = new CancellationTokenSource()
+                IsActive = false
             });
         }
     }
 
     /// <summary>
     /// Add a new download to the queue and start it (subject to concurrency limit).
-    /// Returns false if the same URL is already in the queue (in-memory dedup).
+    /// Returns false if the same URL is already active in the queue (in-memory dedup).
     /// </summary>
     public bool Enqueue(VideoInfo info, string qualityKey)
     {
         // 内存去重：检查同一URL是否已在队列中（排队中/下载中）
-        if (Items.Any(i => string.Equals(i.Url, info.Url, StringComparison.OrdinalIgnoreCase)
-            && !i.IsCompleted && !i.HasFailed))
-        {
+        if (Items.Any(i => string.Equals(i.Url, info.Url, StringComparison.OrdinalIgnoreCase) && i.IsActive))
             return false; // 已在队列中，跳过
-        }
 
         var safeTitle = MakeSafeFileName(info.Title);
-        var ext = ".mp4";
-        var subDir = _settings.CreateSubfolders 
+        var subDir = _settings.CreateSubfolders
             ? Path.Combine(_settings.OutputDirectory, MakeSafeFileName(info.Site.ToString()))
             : _settings.OutputDirectory;
 
         Directory.CreateDirectory(subDir);
-        var outputPath = Path.Combine(subDir, safeTitle + ext);
-        outputPath = EnsureUniquePath(outputPath);
+
+        // HLS 流拼出来的是 MPEG-TS；ffmpeg 可用时会在下载完成后重封装为 .mp4
+        var quality = VideoInfoService.ResolveQualityKey(info, qualityKey);
+        var ext = quality.Contains("hls", StringComparison.OrdinalIgnoreCase) ? ".ts" : ".mp4";
+        var outputPath = EnsureUniquePath(Path.Combine(subDir, safeTitle + ext));
 
         var item = new DownloadItem
         {
@@ -87,7 +106,8 @@ public class DownloadQueueService
             OutputPath = outputPath,
             Quality = qualityKey,
             Site = info.Site,
-            Status = "Queued"
+            Status = "Queued",
+            IsActive = true
         };
 
         App.Current.Dispatcher.Invoke(() => Items.Add(item));
@@ -97,29 +117,41 @@ public class DownloadQueueService
 
     private async Task StartDownloadAsync(DownloadItem item, VideoInfo info, string qualityKey)
     {
-        await _concurrencySemaphore.WaitAsync(item.CancellationSource.Token);
+        // Cancel while still queued → WaitAsync throws before the try block below
+        try
+        {
+            await _concurrencySemaphore.WaitAsync(item.CancellationSource.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            FinishItem(item, "Cancelled");
+            return;
+        }
 
         try
         {
             if (item.CancellationSource.Token.IsCancellationRequested)
             {
-                item.Status = "Cancelled";
+                FinishItem(item, "Cancelled");
                 return;
             }
 
             item.Status = "Downloading";
+            item.IsDownloading = true;
 
+            var engine = new DownloadEngine(_settings.MaxSegmentThreads);
             var streamUrl = await _infoService.ResolveStreamUrlAsync(info, qualityKey,
                 item.CancellationSource.Token);
 
             // Pass the original page URL as Referer (required for PornHub CDN auth)
-            await _engine.DownloadAsync(
+            var finalPath = await engine.DownloadAsync(
                 streamUrl,
                 item.OutputPath,
                 pageUrl: info.Url,
                 onProgress: (pct, speed) =>
                 {
-                    App.Current.Dispatcher.Invoke(() =>
+                    // BeginInvoke: never block download threads on the UI thread
+                    App.Current.Dispatcher.BeginInvoke(() =>
                     {
                         if (pct >= 0) item.Progress = pct;
                         item.Speed = speed;
@@ -128,9 +160,12 @@ public class DownloadQueueService
                 },
                 ct: item.CancellationSource.Token);
 
+            // HLS remux may have produced a different (mp4) file name
+            item.OutputPath = finalPath;
             item.Progress = 100;
             item.Status = "Completed";
             item.IsCompleted = true;
+            item.IsActive = false;
 
             // 下载完成后记录到SQLite（仅在文件保存成功后）
             try
@@ -149,7 +184,7 @@ public class DownloadQueueService
         }
         catch (OperationCanceledException)
         {
-            item.Status = "Cancelled";
+            FinishItem(item, "Cancelled");
             // Clean up partial file
             try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
         }
@@ -157,6 +192,9 @@ public class DownloadQueueService
         {
             item.Status = $"Failed: {ex.Message}";
             item.HasFailed = true;
+            item.IsActive = false;
+            // Clean up partial file so the dedup check (file exists) isn't fooled
+            try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
         }
         finally
         {
@@ -164,47 +202,49 @@ public class DownloadQueueService
         }
     }
 
+    private static void FinishItem(DownloadItem item, string status)
+    {
+        item.Status = status;
+        item.IsActive = false;
+    }
+
     public void Cancel(DownloadItem item)
     {
+        if (item == null || item.IsCompleted || item.HasFailed) return;
         item.CancellationSource.Cancel();
         item.Status = "Cancelling...";
+        // A queued (not yet started) item never touches the semaphore;
+        // mark it inactive immediately so dedup/queue-clear see it as done.
+        if (!item.IsDownloading) item.IsActive = false;
     }
 
     public void CancelAll()
     {
-        foreach (var item in Items.Where(i => !i.IsCompleted && !i.HasFailed))
+        foreach (var item in Items.Where(i => i.IsActive))
             Cancel(item);
     }
 
     /// <summary>
-    /// 清除所有非下载中的任务（Completed/Failed/Cancelled/已删除等），并同步清理数据库记录。
-    /// 如果队列为空，清空整个数据库。
+    /// 清除所有非活动任务（已完成/失败/已取消/历史记录），并同步清理数据库记录。
+    /// 活动任务（排队中或下载中）不受影响。
     /// </summary>
     public void RemoveCompleted()
     {
-        // 只保留"下载中"状态的任务
-        var notDownloading = Items.Where(i =>
-            !i.Status.Contains("下载") &&
-            !i.Status.Contains("Downloading") &&
-            !i.Status.Contains("下载中") &&
-            !i.Status.Contains("Connecting")).ToList();
+        // 只保留活动中的任务（排队中/下载中），不再依赖状态字符串匹配
+        var toRemove = Items.Where(i => !i.IsActive).ToList();
 
         // 从数据库删除被清除项的记录
-        foreach (var item in notDownloading)
-        {
+        foreach (var item in toRemove)
             _recordService.DeleteRecord(item.Url);
-        }
 
         App.Current.Dispatcher.Invoke(() =>
         {
-            foreach (var item in notDownloading) Items.Remove(item);
+            foreach (var item in toRemove) Items.Remove(item);
         });
 
         // 如果队列为空，清空整个数据库
         if (Items.Count == 0)
-        {
             _recordService.ClearAll();
-        }
     }
 
     private static string MakeSafeFileName(string name)

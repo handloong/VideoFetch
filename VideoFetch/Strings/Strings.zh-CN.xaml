@@ -42,7 +42,20 @@
     <sys:String x:Key="Col_Checkbox">☐</sys:String>
     <sys:String x:Key="Col_Title">标题</sys:String>
     <sys:String x:Key="Col_Source">来源</sys:String>
+    <sys:String x:Key="Col_Duration">时长</sys:String>
     <sys:String x:Key="Col_Download">操作</sys:String>
+
+    <!-- Category tab -->
+    <sys:String x:Key="Tab_Category">🗂 分类</sys:String>
+    <sys:String x:Key="Btn_LoadCategories">🔄 加载分类</sys:String>
+    <sys:String x:Key="Cat_Loading">正在加载 {0} 分类...</sys:String>
+    <sys:String x:Key="Cat_Loaded">{0}：共 {1} 个分类，点击标签浏览视频</sys:String>
+    <sys:String x:Key="Cat_LoadFailed">在线分类解析失败，已使用内置分类（{0}）</sys:String>
+    <sys:String x:Key="Cat_Browsing">正在浏览分类「{0}」第 {1} 页...</sys:String>
+    <sys:String x:Key="Cat_Browsed">分类「{0}」已加载 {1} 个视频</sys:String>
+    <sys:String x:Key="Cat_NoResults">该分类没有解析到视频</sys:String>
+    <sys:String x:Key="Cat_BrowseError">分类浏览失败: {0}</sys:String>
+    <sys:String x:Key="Empty_CategoryResults">先选择站点并点击"加载分类"，然后点击分类标签浏览视频。双击行可预览缩略图。</sys:String>
 
     <!-- Batch actions -->
     <sys:String x:Key="Btn_SelectAll">☑ 全选</sys:String>
@@ -55,7 +68,7 @@
     <sys:String x:Key="Tip_IncludeDownloaded">勾选后，已下载过的视频也会被重新下载（类似迅雷强制重下载）</sys:String>
 
     <!-- Empty state -->
-    <sys:String x:Key="Empty_SearchResults">在上方输入关键词并点击"搜索"，或加载下方分类。</sys:String>
+    <sys:String x:Key="Empty_SearchResults">在上方输入关键词并点击"搜索"来查找视频；也可以切换到"分类"标签页按分类浏览。</sys:String>
 
     <!-- Search status messages -->
     <sys:String x:Key="Status_Searching">正在 {0} 搜索「{1}」...</sys:String>

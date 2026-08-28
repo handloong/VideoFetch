@@ -55,6 +55,19 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public SiteType Site { get; set; }
     public DateTime AddedAt { get; set; } = DateTime.Now;
 
+    /// <summary>
+    /// Task is still active (queued or downloading). Set false on
+    /// completion, failure or cancellation. History entries are never active.
+    /// Queue clearing and dedup must rely on this instead of parsing Status strings.
+    /// </summary>
+    public bool IsActive { get; set; }
+
+    /// <summary>
+    /// True once the download actually started (semaphore acquired);
+    /// false while still waiting in the queue.
+    /// </summary>
+    public bool IsDownloading { get; set; }
+
     public double Progress
     {
         get => _progress;
@@ -150,17 +163,31 @@ public class SearchResult : System.ComponentModel.INotifyPropertyChanged
     /// </summary>
     public string LocalFilePath { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Decoded thumbnail (small, frozen) — loaded in the background after the
+    /// result is added to a list. Null until loaded; the UI shows a placeholder.
+    /// </summary>
+    private System.Windows.Media.Imaging.BitmapSource? _thumbnailImage;
+    public System.Windows.Media.Imaging.BitmapSource? ThumbnailImage
+    {
+        get => _thumbnailImage;
+        set { _thumbnailImage = value; OnPropertyChanged(nameof(ThumbnailImage)); }
+    }
+
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged(string name) =>
         PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
 /// <summary>
-/// Represents a category/tag from a supported site
+/// Represents a category/tag from a supported site.
+/// Key is the browse key: a category slug ("amateur"), a URL path ("/c/xxx"),
+/// or a plain keyword (sites without real category pages browse via keyword search).
 /// </summary>
 public class CategoryItem
 {
     public string Name { get; set; } = string.Empty;
+    public string Key { get; set; } = string.Empty;
     public SiteType Site { get; set; }
     public int VideoCount { get; set; }
 

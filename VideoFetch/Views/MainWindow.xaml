@@ -141,6 +141,9 @@
                 <TabItem Header="{DynamicResource Tab_Search}">
                     <views:SearchTab/>
                 </TabItem>
+                <TabItem Header="{DynamicResource Tab_Category}">
+                    <views:CategoryTab/>
+                </TabItem>
                 <TabItem Header="{DynamicResource Tab_Queue}">
                     <views:QueueTab/>
                 </TabItem>
