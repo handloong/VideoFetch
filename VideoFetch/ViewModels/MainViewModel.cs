@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -182,17 +184,213 @@ public partial class MainViewModel : ObservableObject
         _queue = new DownloadQueueService(_settings, _recordService);
 
         // 应用代理设置（解析器/下载引擎共享同一个 handler）
-        HttpClientFactory.Configure(_settings.ProxyUrl);
+        HttpClientFactory.Configure(EffectiveProxyUrl());
 
         // Keep HasSearchResults in sync with SearchResults collection
         // Also update 1-based indices for display
         SearchResults.CollectionChanged += SearchResults_CollectionChanged;
 
-        // Keep IsQueueEmpty in sync
-        DownloadItems.CollectionChanged += (_, _) => OnPropertyChanged(nameof(IsQueueEmpty));
-
         // Category results use the same selection/numbering plumbing as search results
         CategoryResults.CollectionChanged += CategoryResults_CollectionChanged;
+
+        // 下载页：迅雷式分类视图（全部/下载中/已完成/失败/已删除）
+        QueueItemsView = CollectionViewSource.GetDefaultView(_queue.Items);
+        QueueItemsView.Filter = FilterDownloadItem;
+
+        // Keep IsQueueEmpty in sync + track item state changes for the filter view
+        DownloadItems.CollectionChanged += DownloadItems_CollectionChanged;
+        // 订阅历史记录项的属性变化并计算初始计数
+        DownloadItems_CollectionChanged(_queue.Items,
+            new System.Collections.Specialized.NotifyCollectionChangedEventArgs(
+                System.Collections.Specialized.NotifyCollectionChangedAction.Reset));
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  QUEUE FILTER (迅雷式分类)
+    // ══════════════════════════════════════════════════════════
+
+    /// <summary>Filtered view of the download queue shown in the queue tab.</summary>
+    public ICollectionView QueueItemsView { get; }
+
+    /// <summary>Current category selected on the queue page.</summary>
+    [ObservableProperty]
+    private QueueFilter _queueFilter = QueueFilter.All;
+
+    [ObservableProperty]
+    private string _filterAllText = "全部 (0)";
+
+    [ObservableProperty]
+    private string _filterDownloadingText = "下载中 (0)";
+
+    [ObservableProperty]
+    private string _filterCompletedText = "已完成 (0)";
+
+    [ObservableProperty]
+    private string _filterFailedText = "失败 (0)";
+
+    [ObservableProperty]
+    private string _filterDeletedText = "已删除 (0)";
+
+    /// <summary>Number of items in the trash (drives 清空回收站 visibility).</summary>
+    [ObservableProperty]
+    private int _trashCount;
+
+    /// <summary>Empty-state hint text, follows the selected category.</summary>
+    [ObservableProperty]
+    private string _queueEmptyText = "暂无下载任务";
+
+    [ObservableProperty]
+    private bool _isCurrentViewEmpty = true;
+
+    partial void OnQueueFilterChanged(QueueFilter value) => RefreshQueueStats();
+
+    private static bool IsTrashItem(DownloadItem i)
+        => !i.IsActive && (i.IsDeleted || i.IsFileMissing);
+
+    private bool FilterDownloadItem(object o)
+    {
+        if (o is not DownloadItem i) return false;
+        return QueueFilter switch
+        {
+            QueueFilter.Downloading => i.IsActive,
+            QueueFilter.Completed => !i.IsActive && i.IsCompleted && !IsTrashItem(i),
+            QueueFilter.Failed => !i.IsActive && i.HasFailed && !i.IsCompleted && !IsTrashItem(i),
+            QueueFilter.Deleted => IsTrashItem(i),
+            _ => !IsTrashItem(i) // 全部：隐藏回收站内容
+        };
+    }
+
+    private void DownloadItems_CollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+        {
+            foreach (DownloadItem i in _queue.Items) i.PropertyChanged += QueueItem_PropertyChanged;
+        }
+        else
+        {
+            if (e.NewItems != null)
+                foreach (DownloadItem i in e.NewItems) i.PropertyChanged += QueueItem_PropertyChanged;
+            if (e.OldItems != null)
+                foreach (DownloadItem i in e.OldItems) i.PropertyChanged -= QueueItem_PropertyChanged;
+        }
+
+        OnPropertyChanged(nameof(IsQueueEmpty));
+        RefreshQueueStats();
+    }
+
+    /// <summary>
+    /// Only state transitions matter for the filter/counters — ignore the
+    /// high-frequency Progress/Speed updates.
+    /// </summary>
+    private void QueueItem_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(DownloadItem.Status)
+            or nameof(DownloadItem.IsCompleted)
+            or nameof(DownloadItem.HasFailed)
+            or nameof(DownloadItem.IsDeleted)
+            or nameof(DownloadItem.IsFileMissing))
+        {
+            RefreshQueueStats();
+        }
+    }
+
+    private void RefreshQueueStats()
+    {
+        QueueItemsView.Refresh();
+
+        int active = 0, completed = 0, failed = 0, trash = 0;
+        foreach (var i in _queue.Items)
+        {
+            if (i.IsActive) active++;
+            else if (i.IsDeleted || i.IsFileMissing) trash++;
+            else if (i.IsCompleted) completed++;
+            else if (i.HasFailed) failed++;
+        }
+        int all = _queue.Items.Count - trash;
+
+        FilterAllText = string.Format(LanguageService.GetString("Queue_Filter_All"), all);
+        FilterDownloadingText = string.Format(LanguageService.GetString("Queue_Filter_Downloading"), active);
+        FilterCompletedText = string.Format(LanguageService.GetString("Queue_Filter_Completed"), completed);
+        FilterFailedText = string.Format(LanguageService.GetString("Queue_Filter_Failed"), failed);
+        FilterDeletedText = string.Format(LanguageService.GetString("Queue_Filter_Deleted"), trash);
+        TrashCount = trash;
+
+        QueueEmptyText = QueueFilter switch
+        {
+            QueueFilter.Downloading => LanguageService.GetString("Queue_Empty_Active"),
+            QueueFilter.Completed => LanguageService.GetString("Queue_Empty_Completed"),
+            QueueFilter.Failed => LanguageService.GetString("Queue_Empty_Failed"),
+            QueueFilter.Deleted => LanguageService.GetString("Queue_Empty_Trash"),
+            _ => LanguageService.GetString("Queue_Empty")
+        };
+        IsCurrentViewEmpty = QueueItemsView.IsEmpty;
+    }
+
+    /// <summary>删除任务（软删除 → 移入回收站，文件与去重记录保留）。</summary>
+    [RelayCommand]
+    private void DeleteTask(DownloadItem? item)
+    {
+        if (item == null || item.IsActive) return;
+        item.IsDeleted = true;
+        item.Status = LanguageService.GetString("Queue_Status_Deleted");
+    }
+
+    /// <summary>从回收站恢复任务。</summary>
+    [RelayCommand]
+    private void RestoreTask(DownloadItem? item)
+    {
+        if (item == null || !item.IsDeleted) return;
+        item.IsDeleted = false;
+        if (File.Exists(item.OutputPath) && item.IsCompleted)
+            item.Status = "已完成";
+        // 文件已经不在的任务恢复后仍会留在回收站（IsFileMissing）
+        else if (!File.Exists(item.OutputPath))
+            item.IsFileMissing = true;
+    }
+
+    /// <summary>彻底删除：移出列表；文件已丢失时一并清掉去重记录。</summary>
+    [RelayCommand]
+    private void PurgeTask(DownloadItem? item)
+    {
+        if (item == null || item.IsActive) return;
+        PurgeItems(new[] { item });
+    }
+
+    /// <summary>清空回收站。</summary>
+    [RelayCommand]
+    private void EmptyTrash()
+        => PurgeItems(_queue.Items.Where(IsTrashItem).ToList());
+
+    private void PurgeItems(IList<DownloadItem> items)
+    {
+        foreach (var item in items)
+        {
+            // 文件还在磁盘上 → 保留记录（去重仍有效）；文件已丢失 → 记录没意义，清掉
+            if (!File.Exists(item.OutputPath))
+                _recordService.DeleteRecord(item.Url);
+        }
+
+        App.Current.Dispatcher.Invoke(() =>
+        {
+            foreach (var item in items) _queue.Items.Remove(item);
+        });
+
+        RefreshSearchMarks();
+        RefreshQueueStats();
+    }
+
+    /// <summary>同步刷新搜索/分类结果上的"已下载"标记（记录变动后调用）。</summary>
+    private void RefreshSearchMarks()
+    {
+        foreach (var list in new[] { SearchResults, CategoryResults })
+        {
+            foreach (var r in list)
+            {
+                var record = _recordService.GetByUrl(r.Url);
+                r.IsAlreadyDownloaded = record != null && record.FileExists;
+                r.LocalFilePath = record?.FilePath ?? string.Empty;
+            }
+        }
     }
 
     /// <summary>
@@ -444,19 +642,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ClearCompleted()
-    {
-        _queue.RemoveCompleted();
-        // 同步刷新搜索结果的已下载标记
-        foreach (var r in SearchResults)
-        {
-            var record = _recordService.GetByUrl(r.Url);
-            r.IsAlreadyDownloaded = record != null && record.FileExists;
-            r.LocalFilePath = record?.FilePath ?? string.Empty;
-        }
-    }
-
-    [RelayCommand]
     private void OpenOutputFolder()
     {
         try
@@ -493,13 +678,20 @@ public partial class MainViewModel : ObservableObject
         // Apply new settings to the long-lived queue service (never rebuild it:
         // rebuilding orphans in-flight downloads and breaks the Items binding)
         _queue.ApplySettings();
-        HttpClientFactory.Configure(Settings.ProxyUrl);
+        HttpClientFactory.Configure(EffectiveProxyUrl());
 
         // Show save success message (auto-clear after 2.5 seconds)
         SettingsSavedMessage = "✅ 设置保存成功！";
         await Task.Delay(2500);
         SettingsSavedMessage = string.Empty;
     }
+
+    /// <summary>
+    /// The proxy actually in effect: the configured address only when the
+    /// "启用代理" switch is on, so the address survives toggling.
+    /// </summary>
+    private string EffectiveProxyUrl()
+        => Settings.ProxyEnabled ? Settings.ProxyUrl : string.Empty;
 
     [RelayCommand]
     private void PasteUrl()
@@ -531,6 +723,7 @@ public partial class MainViewModel : ObservableObject
                 _recordService.DeleteRecord(item.Url);
                 item.Status = "文件已不存在";
                 item.IsCompleted = false;
+                item.IsFileMissing = true;
                 return;
             }
 
@@ -565,6 +758,7 @@ public partial class MainViewModel : ObservableObject
                         item.Status = "文件将在重启后删除";
                         _recordService.DeleteRecord(item.Url);
                         item.IsCompleted = false;
+                        item.IsFileMissing = true;
                         return;
                     }
                 }
@@ -574,6 +768,7 @@ public partial class MainViewModel : ObservableObject
             _recordService.DeleteRecord(item.Url);
             item.Status = "本地文件已删除";
             item.IsCompleted = false;
+            item.IsFileMissing = true;
         }
         catch (Exception ex)
         {

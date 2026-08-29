@@ -82,14 +82,27 @@
 
     <!-- Queue tab -->
     <sys:String x:Key="Queue_Empty">No downloads in queue</sys:String>
+    <sys:String x:Key="Queue_Empty_Active">No active downloads</sys:String>
+    <sys:String x:Key="Queue_Empty_Completed">No completed downloads yet</sys:String>
+    <sys:String x:Key="Queue_Empty_Failed">No failed downloads</sys:String>
+    <sys:String x:Key="Queue_Empty_Trash">Trash is empty</sys:String>
+    <sys:String x:Key="Queue_Filter_All">All ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Downloading">Downloading ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Completed">Completed ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Failed">Failed ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Deleted">Deleted ({0})</sys:String>
+    <sys:String x:Key="Queue_Status_Deleted">Deleted</sys:String>
     <sys:String x:Key="Queue_Header_Title">Title</sys:String>
     <sys:String x:Key="Queue_Header_Progress">Progress</sys:String>
     <sys:String x:Key="Queue_Header_Status">Status</sys:String>
     <sys:String x:Key="Queue_Header_Speed">Speed</sys:String>
     <sys:String x:Key="Queue_Header_Actions">Actions</sys:String>
     <sys:String x:Key="Btn_CancelDownload">Cancel</sys:String>
-    <sys:String x:Key="Btn_ClearCompleted">Clear Completed</sys:String>
-    <sys:String x:Key="Btn_DeleteLocalFile">🗑 Delete Local File</sys:String>
+    <sys:String x:Key="Btn_DeleteTask">Delete Task</sys:String>
+    <sys:String x:Key="Btn_DeleteLocalFile">🗑 Delete File</sys:String>
+    <sys:String x:Key="Btn_RestoreTask">Restore</sys:String>
+    <sys:String x:Key="Btn_PurgeTask">Delete Forever</sys:String>
+    <sys:String x:Key="Btn_EmptyTrash">🗑 Empty Trash</sys:String>
 
     <!-- Settings tab -->
     <sys:String x:Key="Settings_General">General Settings</sys:String>
@@ -100,7 +113,8 @@
     <sys:String x:Key="Settings_AutoOpenFolder">Auto-open folder after download</sys:String>
     <sys:String x:Key="Settings_CreateSubfolders">Create subfolders by website</sys:String>
     <sys:String x:Key="Settings_Network">Network Settings</sys:String>
-    <sys:String x:Key="Settings_ProxyAddress">Proxy address (leave empty for no proxy)</sys:String>
+    <sys:String x:Key="Settings_EnableProxy">Enable Proxy</sys:String>
+    <sys:String x:Key="Settings_ProxyAddress">Proxy address</sys:String>
     <sys:String x:Key="Settings_Player">Playback</sys:String>
     <sys:String x:Key="Settings_UseBuiltInPlayer">Use built-in player</sys:String>
     <sys:String x:Key="Settings_BuiltInPlayerHint">Disable to use system default player (e.g. PotPlayer, VLC, MPC)</sys:String>

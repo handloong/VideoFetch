@@ -69,6 +69,7 @@ public class DownloadQueueService
                 Quality = rec.Quality,
                 Progress = 100,
                 IsCompleted = fileExists,
+                IsFileMissing = !fileExists,
                 Status = fileExists ? "已完成" : "文件已删除",
                 Speed = string.Empty,
                 AddedAt = rec.DownloadedAt,
@@ -222,29 +223,6 @@ public class DownloadQueueService
     {
         foreach (var item in Items.Where(i => i.IsActive))
             Cancel(item);
-    }
-
-    /// <summary>
-    /// 清除所有非活动任务（已完成/失败/已取消/历史记录），并同步清理数据库记录。
-    /// 活动任务（排队中或下载中）不受影响。
-    /// </summary>
-    public void RemoveCompleted()
-    {
-        // 只保留活动中的任务（排队中/下载中），不再依赖状态字符串匹配
-        var toRemove = Items.Where(i => !i.IsActive).ToList();
-
-        // 从数据库删除被清除项的记录
-        foreach (var item in toRemove)
-            _recordService.DeleteRecord(item.Url);
-
-        App.Current.Dispatcher.Invoke(() =>
-        {
-            foreach (var item in toRemove) Items.Remove(item);
-        });
-
-        // 如果队列为空，清空整个数据库
-        if (Items.Count == 0)
-            _recordService.ClearAll();
     }
 
     private static string MakeSafeFileName(string name)

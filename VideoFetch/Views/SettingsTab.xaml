@@ -63,8 +63,11 @@
                 <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
                     <StackPanel>
                         <Label Content="{DynamicResource Settings_Network}" FontWeight="Medium"/>
+                        <CheckBox Content="{DynamicResource Settings_EnableProxy}"
+                                  IsChecked="{Binding Settings.ProxyEnabled}" Margin="0,0,0,4"/>
                         <Label Content="{DynamicResource Settings_ProxyAddress}"/>
-                        <TextBox Text="{Binding Settings.ProxyUrl, UpdateSourceTrigger=PropertyChanged}"/>
+                        <TextBox Text="{Binding Settings.ProxyUrl, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding Settings.ProxyEnabled}"/>
                     </StackPanel>
                 </Border>
 

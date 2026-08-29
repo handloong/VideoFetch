@@ -75,6 +75,23 @@ public class IntGreaterThanZeroConverter : IValueConverter
 }
 
 /// <summary>
+/// Two-way enum ↔ bool converter for RadioButton groups:
+/// IsChecked="{Binding SomeEnum, Converter={StaticResource EnumEquals},
+///             ConverterParameter={x:Static models:SomeEnum.Value}}"
+/// </summary>
+public class EnumEqualsConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value != null && value.Equals(parameter);
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool b && b) return parameter!;
+        return System.Windows.DependencyProperty.UnsetValue;
+    }
+}
+
+/// <summary>
 /// Returns a solid color brush based on a DownloadItem status string
 /// </summary>
 public class StatusToColorConverter : IValueConverter
@@ -92,7 +109,7 @@ public class StatusToColorConverter : IValueConverter
                 System.Windows.Media.Color.FromRgb(0x7C, 0x6F, 0xF7)),
             "Queued" => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x99, 0x99, 0xAA)),
-            "Cancelled" or "Cancelling..." => new System.Windows.Media.SolidColorBrush(
+            "Cancelled" or "Cancelling..." or "已删除" or "Deleted" => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x99, 0x99, 0xAA)),
             _ => new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0xFF, 0x98, 0x00))

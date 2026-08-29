@@ -7,6 +7,38 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <conv:BoolToVisibilityConverter x:Key="InvertBoolToVis" Invert="True"/>
         <conv:StatusToColorConverter x:Key="StatusToColor"/>
+        <conv:EnumEqualsConverter x:Key="EnumEquals"/>
+        <conv:IntGreaterThanZeroConverter x:Key="IntGtZero"/>
+
+        <!-- 迅雷式分类药丸 -->
+        <Style x:Key="FilterPill" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bg" CornerRadius="12" Padding="11,4"
+                                Background="Transparent"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            <ContentPresenter VerticalAlignment="Center"
+                                              HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource BgTertiaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="12">
@@ -15,81 +47,146 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
-            <Button Content="{DynamicResource Btn_ClearCompleted}"
-                    Command="{Binding ClearCompletedCommand}"
-                    Style="{StaticResource SecondaryButtonStyle}" Padding="8,3"/>
-            <Button Content="{DynamicResource Btn_OpenFolder}"
-                    Command="{Binding OpenOutputFolderCommand}"
-                    Style="{StaticResource SecondaryButtonStyle}"
-                    Margin="8,0,0,0" Padding="8,3"/>
-        </StackPanel>
+        <!-- Filter pills + actions -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <RadioButton Style="{StaticResource FilterPill}" GroupName="QueueFilter" Content="{Binding FilterAllText}"
+                             IsChecked="{Binding QueueFilter, Converter={StaticResource EnumEquals}, ConverterParameter={x:Static models:QueueFilter.All}}"/>
+                <RadioButton Style="{StaticResource FilterPill}" GroupName="QueueFilter" Content="{Binding FilterDownloadingText}"
+                             IsChecked="{Binding QueueFilter, Converter={StaticResource EnumEquals}, ConverterParameter={x:Static models:QueueFilter.Downloading}}"/>
+                <RadioButton Style="{StaticResource FilterPill}" GroupName="QueueFilter" Content="{Binding FilterCompletedText}"
+                             IsChecked="{Binding QueueFilter, Converter={StaticResource EnumEquals}, ConverterParameter={x:Static models:QueueFilter.Completed}}"/>
+                <RadioButton Style="{StaticResource FilterPill}" GroupName="QueueFilter" Content="{Binding FilterFailedText}"
+                             IsChecked="{Binding QueueFilter, Converter={StaticResource EnumEquals}, ConverterParameter={x:Static models:QueueFilter.Failed}}"/>
+                <RadioButton Style="{StaticResource FilterPill}" GroupName="QueueFilter" Content="{Binding FilterDeletedText}"
+                             IsChecked="{Binding QueueFilter, Converter={StaticResource EnumEquals}, ConverterParameter={x:Static models:QueueFilter.Deleted}}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="{DynamicResource Btn_EmptyTrash}"
+                        Command="{Binding EmptyTrashCommand}"
+                        Style="{StaticResource DangerButtonStyle}" Padding="8,3"
+                        Visibility="{Binding TrashCount, Converter={StaticResource IntGtZero}}"/>
+                <Button Content="{DynamicResource Btn_OpenFolder}"
+                        Command="{Binding OpenOutputFolderCommand}"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="8,0,0,0" Padding="8,3"/>
+            </StackPanel>
+        </Grid>
 
         <!-- Download list -->
-        <ListView Grid.Row="1" ItemsSource="{Binding DownloadItems}"
-                  Background="Transparent" BorderThickness="0"
-                  ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
-                  MouseDoubleClick="QueueList_MouseDoubleClick">
-            <ListView.View>
-                <GridView AllowsColumnReorder="False">
-                    <GridViewColumn Header="{DynamicResource Queue_Header_Title}" Width="220">
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
-                                           ToolTip="{Binding Title}"
-                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                           Padding="6,4" FontSize="12"/>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                    <GridViewColumn Header="{DynamicResource Queue_Header_Progress}" Width="100">
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                <ProgressBar Value="{Binding Progress}" Maximum="100"
-                                             Height="6" Width="80"
-                                             HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                    <GridViewColumn Header="{DynamicResource Queue_Header_Status}" Width="110">
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Status}" FontSize="11"
-                                               Foreground="{Binding Status, Converter={StaticResource StatusToColor}}"
-                                               Padding="6,2"/>
-                                    <TextBlock Text="{Binding Speed}" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}" Padding="6,0"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                    <GridViewColumn Header="{DynamicResource Queue_Header_Actions}" Width="140">
-                        <GridViewColumn.CellTemplate>
-                            <DataTemplate DataType="{x:Type models:DownloadItem}">
-                                <StackPanel Orientation="Horizontal"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Button Content="{DynamicResource Btn_CancelDownload}"
-                                            Command="{Binding DataContext.CancelDownloadCommand,
-                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            FontSize="10" Padding="5,2"
-                                            Visibility="{Binding IsCompleted, Converter={StaticResource InvertBoolToVis}}"/>
-                                    <Button Content="{DynamicResource Btn_DeleteLocalFile}"
-                                            Command="{Binding DataContext.DeleteLocalFileCommand,
-                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            Style="{StaticResource DangerButtonStyle}"
-                                            FontSize="10" Padding="5,2"
-                                            Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVis}}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </GridViewColumn.CellTemplate>
-                    </GridViewColumn>
-                </GridView>
-            </ListView.View>
-        </ListView>
+        <Grid Grid.Row="1">
+            <ListView ItemsSource="{Binding QueueItemsView}"
+                      Background="Transparent" BorderThickness="0"
+                      ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
+                      MouseDoubleClick="QueueList_MouseDoubleClick">
+                <ListView.View>
+                    <GridView AllowsColumnReorder="False">
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Title}" Width="220">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Title}"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Padding="6,4" FontSize="12"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Progress}" Width="100">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <ProgressBar Value="{Binding Progress}" Maximum="100"
+                                                 Height="6" Width="80"
+                                                 HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Status}" Width="110">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Status}" FontSize="11"
+                                                   Foreground="{Binding Status, Converter={StaticResource StatusToColor}}"
+                                                   Padding="6,2"/>
+                                        <TextBlock Text="{Binding Speed}" FontSize="10"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Padding="6,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Actions}" Width="200">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <Grid>
+                                        <!-- 正常任务：取消 / 删除任务 / 删除文件 -->
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Visibility="{Binding IsInTrash, Converter={StaticResource InvertBoolToVis}}">
+                                            <Button Content="{DynamicResource Btn_CancelDownload}"
+                                                    Command="{Binding DataContext.CancelDownloadCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    FontSize="10" Padding="5,2"
+                                                    Visibility="{Binding IsCompleted, Converter={StaticResource InvertBoolToVis}}"/>
+                                            <Button Content="{DynamicResource Btn_DeleteTask}"
+                                                    Command="{Binding DataContext.DeleteTaskCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Margin="4,0,0,0"
+                                                    FontSize="10" Padding="5,2"
+                                                    Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVis}}"/>
+                                            <Button Content="{DynamicResource Btn_DeleteLocalFile}"
+                                                    Command="{Binding DataContext.DeleteLocalFileCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource DangerButtonStyle}"
+                                                    Margin="4,0,0,0"
+                                                    FontSize="10" Padding="5,2"
+                                                    Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+
+                                        <!-- 回收站：恢复 / 彻底删除 -->
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Visibility="{Binding IsInTrash, Converter={StaticResource BoolToVis}}">
+                                            <Button Content="{DynamicResource Btn_RestoreTask}"
+                                                    Command="{Binding DataContext.RestoreTaskCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    FontSize="10" Padding="5,2"
+                                                    Visibility="{Binding IsDeleted, Converter={StaticResource BoolToVis}}"/>
+                                            <Button Content="{DynamicResource Btn_PurgeTask}"
+                                                    Command="{Binding DataContext.PurgeTaskCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource DangerButtonStyle}"
+                                                    Margin="4,0,0,0"
+                                                    FontSize="10" Padding="5,2"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                    </GridView>
+                </ListView.View>
+            </ListView>
+
+            <!-- Empty state (follows the selected category) -->
+            <Border Background="Transparent"
+                    Visibility="{Binding IsCurrentViewEmpty, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding QueueEmptyText}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

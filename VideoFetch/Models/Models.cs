@@ -13,6 +13,18 @@ public enum SiteType
 }
 
 /// <summary>
+/// Download page category filter (Xunlei-style)
+/// </summary>
+public enum QueueFilter
+{
+    All,
+    Downloading,
+    Completed,
+    Failed,
+    Deleted
+}
+
+/// <summary>
 /// Represents a video quality option
 /// </summary>
 public record QualityOption(string Label, string Value);
@@ -46,6 +58,9 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     private string _speed = string.Empty;
     private bool _isCompleted;
     private bool _hasFailed;
+    private bool _isActive;
+    private bool _isDeleted;
+    private bool _isFileMissing;
 
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Title { get; set; } = string.Empty;
@@ -60,13 +75,41 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     /// completion, failure or cancellation. History entries are never active.
     /// Queue clearing and dedup must rely on this instead of parsing Status strings.
     /// </summary>
-    public bool IsActive { get; set; }
+    public bool IsActive
+    {
+        get => _isActive;
+        set { _isActive = value; OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsInTrash)); }
+    }
 
     /// <summary>
     /// True once the download actually started (semaphore acquired);
     /// false while still waiting in the queue.
     /// </summary>
     public bool IsDownloading { get; set; }
+
+    /// <summary>
+    /// 软删除：任务被移入回收站。文件可能仍在磁盘上（保留去重记录）。
+    /// </summary>
+    public bool IsDeleted
+    {
+        get => _isDeleted;
+        set { _isDeleted = value; OnPropertyChanged(nameof(IsDeleted)); OnPropertyChanged(nameof(IsInTrash)); }
+    }
+
+    /// <summary>
+    /// 本地文件已不存在（下载前被删、通过应用删除或历史文件丢失）
+    /// —— 与软删除一样归入"已删除"视图。
+    /// </summary>
+    public bool IsFileMissing
+    {
+        get => _isFileMissing;
+        set { _isFileMissing = value; OnPropertyChanged(nameof(IsFileMissing)); OnPropertyChanged(nameof(IsInTrash)); }
+    }
+
+    /// <summary>
+    /// 回收站成员（软删除或文件丢失），用于切换行内按钮组（恢复/彻底删除）。
+    /// </summary>
+    public bool IsInTrash => !IsActive && (IsDeleted || IsFileMissing);
 
     public double Progress
     {
@@ -112,6 +155,8 @@ public class AppSettings
 {
     public string OutputDirectory { get; set; } =
         System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "VideoFetch");
+    /// <summary>Proxy switch — the address is kept in settings even when disabled.</summary>
+    public bool ProxyEnabled { get; set; } = false;
     public string ProxyUrl { get; set; } = string.Empty;
     public int MaxConcurrentDownloads { get; set; } = 2;
     public int MaxSegmentThreads { get; set; } = 8;

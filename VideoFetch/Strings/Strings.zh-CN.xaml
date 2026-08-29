@@ -82,14 +82,27 @@
 
     <!-- Queue tab -->
     <sys:String x:Key="Queue_Empty">暂无下载任务</sys:String>
+    <sys:String x:Key="Queue_Empty_Active">没有正在下载的任务</sys:String>
+    <sys:String x:Key="Queue_Empty_Completed">还没有已完成的下载</sys:String>
+    <sys:String x:Key="Queue_Empty_Failed">没有失败的任务</sys:String>
+    <sys:String x:Key="Queue_Empty_Trash">回收站是空的</sys:String>
+    <sys:String x:Key="Queue_Filter_All">全部 ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Downloading">下载中 ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Completed">已完成 ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Failed">失败 ({0})</sys:String>
+    <sys:String x:Key="Queue_Filter_Deleted">已删除 ({0})</sys:String>
+    <sys:String x:Key="Queue_Status_Deleted">已删除</sys:String>
     <sys:String x:Key="Queue_Header_Title">标题</sys:String>
     <sys:String x:Key="Queue_Header_Progress">进度</sys:String>
     <sys:String x:Key="Queue_Header_Status">状态</sys:String>
     <sys:String x:Key="Queue_Header_Speed">速度</sys:String>
     <sys:String x:Key="Queue_Header_Actions">操作</sys:String>
     <sys:String x:Key="Btn_CancelDownload">取消</sys:String>
-    <sys:String x:Key="Btn_ClearCompleted">清除已完成</sys:String>
-    <sys:String x:Key="Btn_DeleteLocalFile">🗑 删除本地文件</sys:String>
+    <sys:String x:Key="Btn_DeleteTask">删除任务</sys:String>
+    <sys:String x:Key="Btn_DeleteLocalFile">🗑 删除文件</sys:String>
+    <sys:String x:Key="Btn_RestoreTask">恢复</sys:String>
+    <sys:String x:Key="Btn_PurgeTask">彻底删除</sys:String>
+    <sys:String x:Key="Btn_EmptyTrash">🗑 清空回收站</sys:String>
 
     <!-- Settings tab -->
     <sys:String x:Key="Settings_General">通用设置</sys:String>
@@ -100,7 +113,8 @@
     <sys:String x:Key="Settings_AutoOpenFolder">下载完成后自动打开文件夹</sys:String>
     <sys:String x:Key="Settings_CreateSubfolders">按网站自动创建子文件夹</sys:String>
     <sys:String x:Key="Settings_Network">网络设置</sys:String>
-    <sys:String x:Key="Settings_ProxyAddress">代理地址（留空则不使用代理）</sys:String>
+    <sys:String x:Key="Settings_EnableProxy">启用代理</sys:String>
+    <sys:String x:Key="Settings_ProxyAddress">代理地址</sys:String>
     <sys:String x:Key="Settings_Player">播放设置</sys:String>
     <sys:String x:Key="Settings_UseBuiltInPlayer">使用内置播放器</sys:String>
     <sys:String x:Key="Settings_BuiltInPlayerHint">关闭则调用系统默认播放器（如 PotPlayer / MPC）</sys:String>

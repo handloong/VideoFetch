@@ -373,3 +373,6 @@ VideoFetch-*.zip
 
 # WorkBuddy workspace data
 .workbuddy/
+
+# Bundled ffmpeg binary (downloaded by publish.bat, ~140MB)
+VideoFetch/ffmpeg.exe

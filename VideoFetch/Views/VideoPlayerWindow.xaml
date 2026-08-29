@@ -12,6 +12,8 @@
         <Style x:Key="PlayerSlider" TargetType="Slider">
             <Setter Property="Height" Value="30"/>
             <Setter Property="IsMoveToPointEnabled" Value="True"/>
+            <!-- 键盘方向键统一交给窗口快捷键处理，避免滑条抢焦点后 seek 状态错乱 -->
+            <Setter Property="Focusable" Value="False"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Slider">
@@ -41,9 +43,7 @@
                                         </RepeatButton>
                                     </Track.IncreaseRepeatButton>
                                     <Track.Thumb>
-                                        <Thumb Width="16" Height="16" Cursor="Hand"
-                                               DragStarted="TimeSlider_DragStarted"
-                                               DragCompleted="TimeSlider_DragCompleted">
+                                        <Thumb Width="16" Height="16" Cursor="Hand">
                                             <Thumb.Template>
                                                 <ControlTemplate TargetType="Thumb">
                                                     <Ellipse Width="16" Height="16"
@@ -116,24 +116,25 @@
 
         <MediaElement x:Name="Media" Grid.Row="0"
                       LoadedBehavior="Manual" UnloadedBehavior="Stop"
+                      ScrubbingEnabled="True"
                       Volume="1.0"
                       MediaOpened="Media_MediaOpened"
-                      MediaEnded="Media_MediaEnded"/>
+                      MediaEnded="Media_MediaEnded"
+                      MediaFailed="Media_MediaFailed"/>
 
         <Border Grid.Row="1" Background="#1A1A2E"
                 BorderBrush="#252540" BorderThickness="0,1,0,0"
                 Padding="14,10">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-                <!-- Play/Pause -->
+                <!-- Play/Pause (icon follows the window's IsPlaying state) -->
                 <Button x:Name="BtnPlayPause" Grid.Column="0"
                         Width="36" Height="36" Click="BtnPlayPause_Click">
                     <Button.Template>
@@ -150,6 +151,10 @@
                                     <Setter TargetName="Border" Property="Background" Value="#2A2A44"/>
                                     <Setter TargetName="Icon" Property="Fill" Value="White"/>
                                 </Trigger>
+                                <DataTrigger Binding="{Binding IsPlaying, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                    <Setter TargetName="Icon" Property="Data"
+                                            Value="M 2,1 L 5,1 L 5,11 L 2,11 Z M 8,1 L 11,1 L 11,11 L 8,11 Z"/>
+                                </DataTrigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Button.Template>
@@ -195,11 +200,6 @@
                 <TextBlock x:Name="TimeLabel" Grid.Column="4"
                            Text="00:00 / 00:00" FontSize="11" FontFamily="Consolas"
                            Foreground="#AAAAAA" VerticalAlignment="Center" Margin="10,0,10,0"/>
-
-                <!-- Close -->
-                <Button Grid.Column="5" Content="✕" Width="32" Height="32"
-                        Style="{StaticResource SecondaryButtonStyle}"
-                        Click="BtnClose_Click"/>
             </Grid>
         </Border>
     </Grid>

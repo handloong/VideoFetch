@@ -132,10 +132,58 @@ public class DownloadEngine
             try { Directory.Delete(tempDir, recursive: true); } catch { }
         }
 
-        // 5. Remux raw TS → MP4 with ffmpeg when available
-        var finalPath = await TryRemuxToMp4Async(outputPath, ct);
+        // 5. Decide the final container:
+        //    - fMP4/CMAF segments concatenate into a valid fragmented MP4 → rename
+        //    - MPEG-TS → remux with ffmpeg (bundled/PATH); keep .ts if unavailable
+        var finalPath = await FinalizeHlsOutputAsync(outputPath, ct);
         onProgress?.Invoke(100, "Done");
         return finalPath;
+    }
+
+    /// <summary>
+    /// Turn the concatenated HLS output into its proper container:
+    /// MP4 ("ftyp" header, i.e. CMAF/fMP4 HLS) → rename to .mp4;
+    /// MPEG-TS → remux to .mp4 via ffmpeg, keeping .ts only when ffmpeg is unavailable.
+    /// </summary>
+    private static async Task<string> FinalizeHlsOutputAsync(string outputPath, CancellationToken ct)
+    {
+        if (!outputPath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
+            return outputPath;
+
+        var header = new byte[12];
+        await using (var fs = new FileStream(outputPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            if (await fs.ReadAsync(header.AsMemory(0, header.Length), ct) < header.Length)
+                return outputPath;
+        }
+
+        // MP4 boxes start with a 4-byte size followed by the box type
+        var isMp4 = header[4] == (byte)'f' && header[5] == (byte)'t'
+                    && header[6] == (byte)'p' && header[7] == (byte)'y';
+        if (!isMp4)
+            return await TryRemuxToMp4Async(outputPath, ct);
+
+        var mp4Path = UniqueMp4Path(outputPath);
+        File.Move(outputPath, mp4Path);
+        return mp4Path;
+    }
+
+    /// <summary>
+    /// Pick a non-existing ".mp4" name matching the given .ts path.
+    /// </summary>
+    private static string UniqueMp4Path(string tsPath)
+    {
+        var mp4Path = Path.ChangeExtension(tsPath, ".mp4");
+        if (!File.Exists(mp4Path)) return mp4Path;
+
+        var dir = Path.GetDirectoryName(mp4Path)!;
+        var name = Path.GetFileNameWithoutExtension(mp4Path);
+        for (int i = 1; i < 1000; i++)
+        {
+            var candidate = Path.Combine(dir, $"{name} ({i}).mp4");
+            if (!File.Exists(candidate)) return candidate;
+        }
+        return mp4Path;
     }
 
     /// <summary>
@@ -150,21 +198,7 @@ public class DownloadEngine
         var ffmpeg = FindFfmpeg();
         if (ffmpeg == null) return tsPath;
 
-        var mp4Path = Path.Combine(
-            Path.GetDirectoryName(tsPath)!,
-            Path.GetFileNameWithoutExtension(tsPath) + ".mp4");
-
-        // Don't overwrite an existing MP4 from an earlier download
-        if (File.Exists(mp4Path))
-        {
-            var dir = Path.GetDirectoryName(mp4Path)!;
-            var name = Path.GetFileNameWithoutExtension(mp4Path);
-            for (int i = 1; i < 1000; i++)
-            {
-                var candidate = Path.Combine(dir, $"{name} ({i}).mp4");
-                if (!File.Exists(candidate)) { mp4Path = candidate; break; }
-            }
-        }
+        var mp4Path = UniqueMp4Path(tsPath);
 
         try
         {

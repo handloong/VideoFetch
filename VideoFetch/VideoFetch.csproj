@@ -20,4 +20,9 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   </ItemGroup>
 
+  <!-- ffmpeg 用于 HLS(TS) 下载后的重封装为 MP4；缺失时应用仍可用（保留 .ts） -->
+  <ItemGroup>
+    <None Include="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('ffmpeg.exe')" />
+  </ItemGroup>
+
 </Project>

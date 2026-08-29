@@ -22,6 +22,20 @@ if exist "%OUTPUT_BASE%" (
     echo.
 )
 
+:: ── 0. 确保 ffmpeg 存在（HLS 下载重封装为 MP4 用）─────────────────
+if not exist "VideoFetch\ffmpeg.exe" (
+    echo [0/4] 未找到 VideoFetch\ffmpeg.exe，正在下载 ffmpeg（约 160MB，仅首次）...
+    powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip' -OutFile \"$env:TEMP\ffmpeg-win64.zip\""
+    if exist "%TEMP%\ffmpeg-win64.zip" (
+        powershell -NoProfile -Command "Expand-Archive -Path \"$env:TEMP\ffmpeg-win64.zip\" -DestinationPath \"$env:TEMP\ffmpeg-extract\" -Force; Copy-Item (Get-ChildItem \"$env:TEMP\ffmpeg-extract\" -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName -Destination 'VideoFetch\ffmpeg.exe' -Force"
+        del /q "%TEMP%\ffmpeg-win64.zip" 2>nul
+        echo [完成] ffmpeg 已就位
+    ) else (
+        echo [警告] ffmpeg 下载失败，HLS 视频将保留 .ts 后缀
+    )
+    echo.
+)
+
 :: ── 1. 依赖框架版本（不包含 .NET 8 运行时，体积小）──────────────────
 set OUT_FD=%OUTPUT_BASE%\framework-dependent
 echo [1/4] 正在发布「依赖框架」版本（不含 .NET 8 运行时）...
