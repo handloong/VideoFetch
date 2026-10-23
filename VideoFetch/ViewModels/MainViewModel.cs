@@ -406,10 +406,10 @@ public partial class MainViewModel : ObservableObject
     private string _settingsSavedMessage = string.Empty;
 
     /// <summary>
-    /// Available sites for search dropdown
+    /// 搜索/分类页的站点下拉框。顺序由 <see cref="SiteCookies.SupportedSites"/> 定义
+    /// （PornHub 第一，其余字母序），不再在这里另维护一份。
     /// </summary>
-    public IReadOnlyList<SiteType> SupportedSites { get; } =
-        new[] { SiteType.PinSe, SiteType.XVideos, SiteType.XNxx, SiteType.PornHub };
+    public IReadOnlyList<SiteType> SupportedSites => SiteCookies.SupportedSites;
 
     /// <summary>
     /// Current page number for pagination

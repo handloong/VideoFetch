@@ -19,9 +19,13 @@ public static class SiteCookies
         [SiteType.PinSe] = "91pinse.com",
     };
 
-    /// <summary>支持导入 Cookie 的站点（顺序即界面下拉框顺序）。</summary>
+    /// <summary>
+    /// 支持的站点，**顺序即界面下拉框顺序**：PornHub 固定排第一（用得最多），
+    /// 其余按字母序（PinSe → XNxx → XVideos：不区分大小写比较时 N 在 V 前面）。
+    /// 搜索页 / 分类页 / Cookie 下拉框都引用这一份，别再各写一份。
+    /// </summary>
     public static readonly IReadOnlyList<SiteType> SupportedSites =
-        new[] { SiteType.PinSe, SiteType.XVideos, SiteType.XNxx, SiteType.PornHub };
+        new[] { SiteType.PornHub, SiteType.PinSe, SiteType.XNxx, SiteType.XVideos };
 
     /// <summary>
     /// "a=1; b=2" → [(a,1), (b,2)]。

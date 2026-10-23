@@ -150,6 +150,9 @@ internal static class UiSmokeTest
         // 8a2) 语言切换 + 批量工具栏可见性
         ok &= CheckLanguageAndToolbar(vm);
 
+        // 8a3) 站点下拉框顺序：PornHub 第一，其余字母序
+        ok &= CheckSiteDropdownOrder(vm);
+
         // 8b) 结果列表：Ctrl 点选 / Shift 连选 等同勾选
         ok &= CheckResultRowSelection(vm);
 
@@ -279,6 +282,47 @@ internal static class UiSmokeTest
         // 复位，避免把测试数据写进配置
         vm.ResultSort = ResultSort.Default;
         vm.SearchResults.Clear();
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 站点下拉框顺序：PornHub 固定第一（用得最多），其余按字母。
+    /// 搜索页 / 分类页 / Cookie 三处必须一致 —— 以前 ViewModel 里另写了一份，
+    /// 改顺序时很容易只改一处。
+    /// </summary>
+    private static bool CheckSiteDropdownOrder(MainViewModel vm)
+    {
+        var ok = true;
+
+        var expected = new[] { SiteType.PornHub, SiteType.PinSe, SiteType.XNxx, SiteType.XVideos };
+        var actual = vm.SupportedSites.ToArray();
+
+        ok &= Check("site-order: PornHub 排第一",
+            actual.Length > 0 && actual[0] == SiteType.PornHub,
+            string.Join(",", actual.Select(x => x.ToString())));
+
+        ok &= Check("site-order: 其余按字母序",
+            actual.Skip(1).SequenceEqual(actual.Skip(1).OrderBy(x => x.ToString(), StringComparer.OrdinalIgnoreCase)),
+            string.Join(",", actual.Skip(1).Select(x => x.ToString())));
+
+        ok &= Check("site-order: 与预期完全一致",
+            actual.SequenceEqual(expected), string.Join(",", actual.Select(x => x.ToString())));
+
+        // 两个页面的下拉框都要按这个顺序渲染
+        var searchTab = new SearchTab { DataContext = vm };
+        searchTab.Measure(new Size(TabWidth, TabHeight));
+        searchTab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        searchTab.UpdateLayout();
+        var siteCombo = FindDescendant<ComboBox>(searchTab, c => ReferenceEquals(c.ItemsSource, vm.SupportedSites));
+        ok &= Check("site-order: 搜索页下拉框顺序一致",
+            siteCombo != null && siteCombo.Items.Cast<SiteType>().SequenceEqual(expected),
+            siteCombo == null ? "没找到" : string.Join(",", siteCombo.Items.Cast<SiteType>()));
+
+        // Cookie 下拉框用的是同一个列表
+        ok &= Check("site-order: Cookie 下拉框用同一份顺序",
+            vm.CookieSites.SequenceEqual(expected),
+            string.Join(",", vm.CookieSites.Select(x => x.ToString())));
 
         return ok;
     }
