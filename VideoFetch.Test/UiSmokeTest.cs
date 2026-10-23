@@ -128,7 +128,125 @@ internal static class UiSmokeTest
         // 7) 时长筛选下拉框（仅 91pinse）
         ok &= CheckDurationFilter(vm);
 
+        // 8) 弹层主题（右键菜单 / ToolTip 都是独立视觉树，不继承主题）
+        ok &= CheckPopupThemes();
+
         return ok;
+    }
+
+    /// <summary>
+    /// 右键菜单和 ToolTip 都是独立弹层：拿不到主题资源，WPF 默认给的是系统
+    /// 浅色底，而全局 TextBlock 样式把文字强制成近白色 —— 出现过"浅底白字
+    /// 完全看不清"。这里渲染真实像素来判断，比读属性可靠（模板里的画刷
+    /// 不一定体现在控件属性上）。
+    /// </summary>
+    private static bool CheckPopupThemes()
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(new MenuItem
+        {
+            Header = Application.Current.TryFindResource("Menu_OpenSourceUrl") as string ?? "menu"
+        });
+
+        var tip = new ToolTip
+        {
+            Content = "Failed: Response status code does not indicate success: 410 (Gone)."
+        };
+
+        var ok = CheckPopup("右键菜单", menu, "ui-smoke-contextmenu.png");
+        ok &= CheckPopup("ToolTip", tip, "ui-smoke-tooltip.png");
+        return ok;
+    }
+
+    /// <summary>渲染一个弹层，从像素里找出底色和文字色并校验对比度。</summary>
+    private static bool CheckPopup(string label, FrameworkElement popup, string fileName)
+    {
+        popup.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = popup.DesiredSize;
+        if (!Check($"主题: {label} 有内容可渲染", size.Width > 0 && size.Height > 0)) return false;
+
+        popup.Arrange(new Rect(0, 0, size.Width, size.Height));
+        popup.UpdateLayout();
+
+        var bmp = new RenderTargetBitmap((int)Math.Ceiling(size.Width), (int)Math.Ceiling(size.Height),
+            96, 96, PixelFormats.Pbgra32);
+        bmp.Render(popup);
+
+        var (bg, fg) = SampleColors(bmp);
+        var ratio = ContrastRatio(bg, fg);
+        Console.WriteLine($"  info  {label}: 底 #{bg.R:X2}{bg.G:X2}{bg.B:X2}  " +
+                          $"字 #{fg.R:X2}{fg.G:X2}{fg.B:X2}  对比度 {ratio:0.0}:1  " +
+                          $"尺寸 {size.Width:0}x{size.Height:0}");
+
+        var ok = Check($"主题: {label} 底色是暗色", Luminance(bg) < 0.15);
+        ok &= Check($"主题: {label} 文字够亮（对比度 >= 4.5:1）", ratio >= 4.5);
+
+        var path = Path.Combine(AppContext.BaseDirectory, fileName);
+        using (var fs = File.Create(path))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            encoder.Save(fs);
+        }
+        Console.WriteLine($"  info  screenshot: {path}");
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 从渲染结果里估底色（出现最多的颜色）和文字色（出现 3 次以上最亮的颜色）。
+    /// </summary>
+    private static (Color Background, Color Foreground) SampleColors(BitmapSource bmp)
+    {
+        var stride = bmp.PixelWidth * 4;
+        var pixels = new byte[stride * bmp.PixelHeight];
+        bmp.CopyPixels(pixels, stride, 0);
+
+        var counts = new Dictionary<uint, int>();
+        for (var i = 0; i + 3 < pixels.Length; i += 4)
+        {
+            var key = (uint)((pixels[i + 2] << 16) | (pixels[i + 1] << 8) | pixels[i]);
+            counts.TryGetValue(key, out var n);
+            counts[key] = n + 1;
+        }
+
+        var bgKey = 0u;
+        var bgCount = -1;
+        foreach (var kv in counts)
+            if (kv.Value > bgCount) { bgCount = kv.Value; bgKey = kv.Key; }
+
+        var fgKey = bgKey;
+        var fgLum = Luminance(ToColor(bgKey));
+        foreach (var kv in counts)
+        {
+            if (kv.Value < 3) continue;              // 跳过抗锯齿边缘
+            var lum = Luminance(ToColor(kv.Key));
+            if (lum > fgLum) { fgLum = lum; fgKey = kv.Key; }
+        }
+
+        return (ToColor(bgKey), ToColor(fgKey));
+    }
+
+    private static Color ToColor(uint rgb)
+        => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+
+    // ── WCAG 相对亮度 / 对比度 ──
+    private static double Luminance(Color c)
+    {
+        static double Channel(byte v)
+        {
+            var s = v / 255.0;
+            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+    }
+
+    private static double ContrastRatio(Color a, Color b)
+    {
+        var l1 = Luminance(a);
+        var l2 = Luminance(b);
+        if (l1 < l2) (l1, l2) = (l2, l1);
+        return (l1 + 0.05) / (l2 + 0.05);
     }
 
     /// <summary>
