@@ -549,7 +549,7 @@ public class PinSeParser : ISiteParser
     ///   &lt;/article&gt;
     /// </code>
     /// </summary>
-    private List<SearchResult> ParseSearchHtml(string html)
+    public static List<SearchResult> ParseSearchHtml(string html)
     {
         var results = new List<SearchResult>();
         var seen = new HashSet<string>();

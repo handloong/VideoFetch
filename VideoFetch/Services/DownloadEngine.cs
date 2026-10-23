@@ -151,16 +151,15 @@ public class DownloadEngine
             return outputPath;
 
         var header = new byte[12];
+        int read;
         await using (var fs = new FileStream(outputPath, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            if (await fs.ReadAsync(header.AsMemory(0, header.Length), ct) < header.Length)
+            read = await fs.ReadAsync(header.AsMemory(0, header.Length), ct);
+            if (read < header.Length)
                 return outputPath;
         }
 
-        // MP4 boxes start with a 4-byte size followed by the box type
-        var isMp4 = header[4] == (byte)'f' && header[5] == (byte)'t'
-                    && header[6] == (byte)'p' && header[7] == (byte)'y';
-        if (!isMp4)
+        if (!IsFragmentedMp4Header(header))
             return await TryRemuxToMp4Async(outputPath, ct);
 
         var mp4Path = UniqueMp4Path(outputPath);
@@ -169,9 +168,18 @@ public class DownloadEngine
     }
 
     /// <summary>
+    /// 拼接后的内容是不是 fMP4/CMAF：第 4-7 字节是 "ftyp" box。
+    /// 是的话直接改名 .mp4 就行，MPEG-TS 才需要 ffmpeg 重封装。
+    /// </summary>
+    public static bool IsFragmentedMp4Header(ReadOnlySpan<byte> header)
+        => header.Length >= 8
+           && header[4] == (byte)'f' && header[5] == (byte)'t'
+           && header[6] == (byte)'y' && header[7] == (byte)'p';
+
+    /// <summary>
     /// Pick a non-existing ".mp4" name matching the given .ts path.
     /// </summary>
-    private static string UniqueMp4Path(string tsPath)
+    public static string UniqueMp4Path(string tsPath)
     {
         var mp4Path = Path.ChangeExtension(tsPath, ".mp4");
         if (!File.Exists(mp4Path)) return mp4Path;
@@ -265,7 +273,11 @@ public class DownloadEngine
         return await resp.Content.ReadAsStringAsync(ct);
     }
 
-    private static string ParseBestSubPlaylist(string m3u8, Uri baseUri)
+    /// <summary>
+    /// 从主播放列表里挑码率最高的子播放列表。
+    /// 公开是为了让离线测试能直接喂一段 m3u8 文本。
+    /// </summary>
+    public static string ParseBestSubPlaylist(string m3u8, Uri baseUri)
     {
         string? bestUrl = null;
         long bestBw = -1;
@@ -293,7 +305,11 @@ public class DownloadEngine
         return bestUrl ?? throw new InvalidDataException("No sub-playlist found in master M3U8.");
     }
 
-    private static List<string> ParseSegments(string m3u8, Uri baseUri)
+    /// <summary>
+    /// 媒体播放列表 → 分段地址（相对地址按播放列表地址补全）。
+    /// 公开是为了让离线测试能直接喂一段 m3u8 文本。
+    /// </summary>
+    public static List<string> ParseSegments(string m3u8, Uri baseUri)
     {
         var segments = new List<string>();
         foreach (var raw in m3u8.Split('\n', StringSplitOptions.RemoveEmptyEntries))

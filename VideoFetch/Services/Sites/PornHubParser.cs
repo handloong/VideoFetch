@@ -119,7 +119,7 @@ public class PornHubParser : ISiteParser
         catch { return results; }
     }
 
-    private static List<SearchResult> ParseSearchResultsHtml(string html)
+    public static List<SearchResult> ParseSearchResultsHtml(string html)
     {
         var results = new List<SearchResult>();
         var doc = new HtmlAgilityPack.HtmlDocument();

@@ -181,7 +181,7 @@ public class XNxxParser : ISiteParser
     //  INTERNAL HELPERS
     // ══════════════════════════════════════════════════════
 
-    private static List<SearchResult> ParseSearchHtml(string html)
+    public static List<SearchResult> ParseSearchHtml(string html)
     {
         var results = new List<SearchResult>();
         var doc = new HtmlAgilityPack.HtmlDocument();

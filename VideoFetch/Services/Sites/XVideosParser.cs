@@ -294,7 +294,7 @@ public class XVideosParser : ISiteParser
     //  INTERNAL HELPERS
     // ═══════════════════════════════════════════════════════
 
-    private static List<SearchResult> ParseSearchHtml(string html)
+    public static List<SearchResult> ParseSearchHtml(string html)
     {
         var results = new List<SearchResult>();
         var doc = new HtmlAgilityPack.HtmlDocument();
@@ -317,11 +317,16 @@ public class XVideosParser : ISiteParser
             if (string.IsNullOrEmpty(href)) continue;
             var url = href.StartsWith("http") ? href : "https://www.xvideos.com" + href;
 
-            // Title: try attribute first, then nested span/p text
+            // Title: 优先用带 title 属性的 <a>（通常是缩略图那个链接），
+            // 再退回链接内部的文字。
+            //
+            // 不能直接拿 linkNode：上面选中的 a.thumb-info 没有 title，它的文字是
+            // "标题 11 min" —— 时长会被带进标题，最后变成文件名的一部分。
             var title = linkNode.GetAttributeValue("title", "");
             if (string.IsNullOrWhiteSpace(title))
+                title = item.SelectSingleNode(".//a[@title]")?.GetAttributeValue("title", "") ?? "";
+            if (string.IsNullOrWhiteSpace(title))
             {
-                // Look for the title text inside the link (usually in a <p> or <span>)
                 var titleNode = item.SelectSingleNode(".//p[contains(@class,'title')]")
                                 ?? item.SelectSingleNode(".//span[contains(@class,'title')]")
                                 ?? item.SelectSingleNode(".//div[contains(@class,'thumb-under')]//a")
@@ -330,6 +335,9 @@ public class XVideosParser : ISiteParser
             }
             title = ParserHelper.DecodeEntities(title);
             title = Regex.Replace(title, "<[^>]*>", "").Trim();
+            // 兜底：去掉尾巴上的 "11 min" / "1 h 20 min"
+            title = Regex.Replace(title, @"\s+\d+\s*(?:h\s*\d+\s*)?min\.?$", "",
+                RegexOptions.IgnoreCase).Trim();
 
             // Duration
             var durNode = item.SelectSingleNode(".//span[contains(@class,'duration')]")
