@@ -5,7 +5,13 @@ set PROJECT=VideoFetch\VideoFetch.csproj
 set RID=win-x64
 set CONFIG=Release
 set OUTPUT_BASE=publish-output
-rem 版本号唯一来源: VideoFetch\VideoFetch.csproj 的 <Version>
+rem 版本号取自最新的 git 标签（v1.6 -> 1.6），与 CI 打包保持一致
+set "TAGVER="
+for /f "delims=" %%t in ('git tag --list "v*" --sort=-v:refname') do (
+    if not defined TAGVER set "TAGVER=%%t"
+)
+if defined TAGVER goto use_tag
+rem 没有标签（例如浅克隆）时回退到 csproj 的默认值
 set "VERSION=0.0.0"
 for /f "delims=" %%v in ('findstr /c:"<Version>" "%PROJECT%"') do set "VERLINE=%%v"
 if defined VERLINE (
@@ -13,6 +19,10 @@ if defined VERLINE (
     set "VERSION=!VERSION:</Version>=!"
     for /f "tokens=1 delims= " %%v in ("!VERSION!") do set "VERSION=%%v"
 )
+goto version_ready
+:use_tag
+set "VERSION=!TAGVER:~1!"
+:version_ready
 
 echo ============================================================
 echo   VideoFetch 发布脚本
@@ -49,7 +59,7 @@ echo [1/4] 正在发布「依赖框架」版本（不含 .NET 8 运行时）...
 echo       输出目录: %OUT_FD%
 echo.
 
-dotnet publish %PROJECT% -c %CONFIG% -r %RID% --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -o %OUT_FD%
+dotnet publish %PROJECT% -c %CONFIG% -r %RID% --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=%VERSION% -o %OUT_FD%
 
 if %errorlevel% neq 0 (
     echo [错误] 依赖框架版本发布失败！
@@ -64,7 +74,7 @@ echo [2/4] 正在发布「自包含」版本（含 .NET 8 运行时）...
 echo       输出目录: %OUT_SC%
 echo.
 
-dotnet publish %PROJECT% -c %CONFIG% -r %RID% --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o %OUT_SC%
+dotnet publish %PROJECT% -c %CONFIG% -r %RID% --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:Version=%VERSION% -o %OUT_SC%
 
 if %errorlevel% neq 0 (
     echo [错误] 自包含版本发布失败！

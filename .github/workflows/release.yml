@@ -4,14 +4,20 @@ name: Release
 #   - framework-dependent : 体积小，用户需安装 .NET 8 Desktop Runtime
 #   - self-contained      : 体积大，双击即用，无需安装运行时
 #
-# 版本号取自标签（v1.5 -> 1.5），并写进程序集版本。
-# 本地推送下一个版本：release.bat（自动 v1.5 -> v1.6）
+# 版本号唯一来源 = git 标签：v1.6 -> 程序集版本 1.6，由 -p:Version 注入。
+# 源码里的 <Version> 只是本地开发的默认值，发版不需要改它、也不需要额外提交。
+# 本地发版：release.bat（自动 v1.5 -> v1.6 并推标签）
 
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '手动发版时必填，例如 1.6（平时请推 v* 标签）'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -63,33 +69,28 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $ref = "${{ github.ref_name }}"
+          $ref   = "${{ github.ref_name }}"
+          $input = "${{ inputs.version }}".Trim()
+
           if ($ref -match '^v(.+)$') {
             $version = $Matches[1]
-          } else {
-            # 手动触发：回退到 csproj 里的 <Version>
-            [xml]$proj = Get-Content VideoFetch/VideoFetch.csproj
-            $version = $proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+            $source  = "tag $ref"
           }
-          "version=$version" >> $env:GITHUB_OUTPUT
-          Write-Host "Building version $version (ref: $ref)"
+          elseif ($input.Length -gt 0) {
+            # 手动触发：必须显式给版本，不再回退 csproj（那里是本地默认值，会过期）
+            $version = $input -replace '^[vV]', ''
+            $source  = "workflow_dispatch input"
+          }
+          else {
+            throw "无法确定版本号：请推送 v* 标签，或手动运行时填写 version 输入。"
+          }
 
-          # 标签和 csproj 版本号应当一致（release.bat 会自动同步）。
-          # 产物版本以标签为准，所以这里只告警，不阻断发版。
-          if ($ref -match '^v') {
-            [xml]$proj = Get-Content VideoFetch/VideoFetch.csproj
-            $projVer = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
-            function Normalize([string]$v) {
-              $p = @(($v -replace '^[vV]', '').Split('.'))
-              while ($p.Count -lt 3) { $p += '0' }
-              return ($p -join '.')
-            }
-            if ($projVer -and (Normalize $projVer) -ne (Normalize $version)) {
-              Write-Host "::warning::csproj <Version> ($projVer) 与标签 (v$version) 不一致 —— 请用 release.bat 发版，或手动同步"
-            } else {
-              Write-Host "csproj <Version> 与标签一致 ($projVer)"
-            }
+          if ($version -notmatch '^\d+(\.\d+)*$') {
+            throw "版本号格式非法：'$version'（应形如 1.6 或 1.6.1）"
           }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "version = $version  (source: $source)"
 
       - name: Publish ${{ matrix.name }}
         shell: pwsh

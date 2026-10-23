@@ -50,16 +50,18 @@ dotnet run
 # 自动递增：在上一个标签基础上 minor +1（v1.5 -> v1.6）
 release.bat
 
-# 指定版本
+# 指定版本（1.8 / 1.8.2 都行，带不带 v 前缀都可以）
 release.bat 1.8
 
-# 只看会打成什么版本，不改文件、不打标签、不推送
+# 只看会打成什么版本，不打标签、不推送
 release.bat --dry-run
 ```
 
-工作流会：跑离线测试 → 发布 `framework-dependent` 与 `self-contained` 两个**单文件** exe → zip 后挂到对应 Release。版本号取自标签并写进程序集版本。
+工作流会：跑离线测试 → 发布 `framework-dependent` 与 `self-contained` 两个**单文件** exe → zip 后挂到对应 Release。
 
-**版本号只有一个源**：`VideoFetch/VideoFetch.csproj` 的 `<Version>`。`release.bat` 打标签前会自动把它改成新版本并提交（`tools/bump-version.ps1`），所以标签和源码始终对得上；CI 会校验一次，不一致只在日志里告警（产物版本始终以标签为准）。`publish.bat` 也从这里取值，不再各自写一份。
+**版本号唯一来源 = git 标签**，发版不需要改任何源码：标签 `v1.6` → CI 用 `-p:Version=1.6` 注入程序集版本，同时用于 zip 命名。`VideoFetch.csproj` 里的 `<Version>` 只是本地开发的默认值（`publish.bat` 也优先读最新标签，仅在没有标签时回退到它）。
+
+`release.bat` 本身只做三件事：检查工作区干净 → `git tag -a` → 推送分支和标签。它必须是纯 ASCII 的 `.bat`（cmd.exe 按字节解析，中文在 GBK 代码页下会把下一行指令吃掉），所以输出是英文。
 
 本地手动打包（可选）：
 
@@ -122,9 +124,7 @@ VideoFetch/
 ├── Themes/DarkTheme.xaml           # 暗色主题
 └── Resources/                      # 图标
 
-tools/
-├── release.ps1                     # 一键发版：同步版本号 -> 提交 -> 打标签 -> 推送
-└── bump-version.ps1                # 只改 csproj 的 <Version>（可单独调用）
+release.bat                        # 一键发版：打标签并推送（版本号即标签名）
 ```
 
 ## 技术栈
