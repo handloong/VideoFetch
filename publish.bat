@@ -5,7 +5,14 @@ set PROJECT=VideoFetch\VideoFetch.csproj
 set RID=win-x64
 set CONFIG=Release
 set OUTPUT_BASE=publish-output
-set VERSION=1.4.0
+rem 版本号唯一来源: VideoFetch\VideoFetch.csproj 的 <Version>
+set "VERSION=0.0.0"
+for /f "delims=" %%v in ('findstr /c:"<Version>" "%PROJECT%"') do set "VERLINE=%%v"
+if defined VERLINE (
+    set "VERSION=!VERLINE:*<Version>=!"
+    set "VERSION=!VERSION:</Version>=!"
+    for /f "tokens=1 delims= " %%v in ("!VERSION!") do set "VERSION=%%v"
+)
 
 echo ============================================================
 echo   VideoFetch 发布脚本

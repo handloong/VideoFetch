@@ -51,9 +51,14 @@ release.bat
 
 # 指定版本
 release.bat 1.8
+
+# 只看会打成什么版本，不改文件、不打标签、不推送
+release.bat --dry-run
 ```
 
 工作流会：跑离线测试 → 发布 `framework-dependent` 与 `self-contained` 两个**单文件** exe → zip 后挂到对应 Release。版本号取自标签并写进程序集版本。
+
+**版本号只有一个源**：`VideoFetch/VideoFetch.csproj` 的 `<Version>`。`release.bat` 打标签前会自动把它改成新版本并提交（`tools/bump-version.ps1`），所以标签和源码始终对得上；CI 会校验一次，不一致只在日志里告警（产物版本始终以标签为准）。`publish.bat` 也从这里取值，不再各自写一份。
 
 本地手动打包（可选）：
 

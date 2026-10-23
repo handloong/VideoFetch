@@ -74,6 +74,23 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Building version $version (ref: $ref)"
 
+          # 标签和 csproj 版本号应当一致（release.bat 会自动同步）。
+          # 产物版本以标签为准，所以这里只告警，不阻断发版。
+          if ($ref -match '^v') {
+            [xml]$proj = Get-Content VideoFetch/VideoFetch.csproj
+            $projVer = ($proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
+            function Normalize([string]$v) {
+              $p = @(($v -replace '^[vV]', '').Split('.'))
+              while ($p.Count -lt 3) { $p += '0' }
+              return ($p -join '.')
+            }
+            if ($projVer -and (Normalize $projVer) -ne (Normalize $version)) {
+              Write-Host "::warning::csproj <Version> ($projVer) 与标签 (v$version) 不一致 —— 请用 release.bat 发版，或手动同步"
+            } else {
+              Write-Host "csproj <Version> 与标签一致 ($projVer)"
+            }
+          }
+
       - name: Publish ${{ matrix.name }}
         shell: pwsh
         run: |
