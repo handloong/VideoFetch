@@ -50,7 +50,8 @@
     <sys:String x:Key="Btn_LoadCategories">🔄 Load Categories</sys:String>
     <sys:String x:Key="Cat_Loading">Loading {0} categories...</sys:String>
     <sys:String x:Key="Cat_Loaded">{0}: {1} categories — click a tag to browse videos</sys:String>
-    <sys:String x:Key="Cat_LoadFailed">Live category parsing failed, using built-in list ({0})</sys:String>
+    <sys:String x:Key="Cat_LoadFailed">Live category parsing failed — check your network/proxy and retry ({0})</sys:String>
+    <sys:String x:Key="Cat_NoCategories">{0}: no categories parsed — the site markup may have changed</sys:String>
     <sys:String x:Key="Cat_Browsing">Browsing "{0}" page {1}...</sys:String>
     <sys:String x:Key="Cat_Browsed">"{0}": {1} videos loaded</sys:String>
     <sys:String x:Key="Cat_NoResults">No videos found in this category</sys:String>

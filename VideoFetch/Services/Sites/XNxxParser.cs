@@ -107,109 +107,56 @@ public class XNxxParser : ISiteParser
     //  CATEGORIES
     // ══════════════════════════════════════════════════════
 
-    /// <summary>Fallback category keywords (browsed via keyword search).</summary>
-    private static readonly (string Key, string Name)[] CuratedCategories =
-    [
-        ("amateur", "Amateur"), ("anal", "Anal"), ("asian", "Asian"), ("bbw", "BBW"),
-        ("big tits", "Big Tits"), ("blonde", "Blonde"), ("chinese", "Chinese"),
-        ("creampie", "Creampie"), ("ebony", "Ebony"), ("hentai", "Hentai"),
-        ("interracial", "Interracial"), ("japanese", "Japanese"), ("latina", "Latina"),
-        ("lesbian", "Lesbian"), ("milf", "MILF"), ("pov", "POV"),
-        ("public", "Public"), ("redhead", "Redhead"), ("teen", "Teen"),
-        ("threesome", "Threesome"), ("webcam", "Webcam"),
-    ];
+    /// <summary>Category page URL for a key from GetCategoriesAsync.</summary>
+    public static string BuildCategoryUrl(string categoryKey, int page = 1)
+        => CategoryParsing.BuildXNxxUrl(categoryKey, page);
 
     /// <summary>
-    /// List XNXX tags/categories. Tries the live /tags page first;
-    /// falls back to a built-in keyword list.
+    /// List XNXX categories.
+    ///
+    /// The site no longer renders a category menu: /tags is only an A–Z index
+    /// (the previous parser fed those single letters into the UI, which is why
+    /// the list looked completely wrong). The real ~158 categories are embedded
+    /// in the page config as "categories":[{label,url,…}], so one homepage
+    /// fetch is enough.
     /// </summary>
     public async Task<List<CategoryItem>> GetCategoriesAsync(CancellationToken ct = default)
     {
-        var results = new List<CategoryItem>();
         try
         {
-            var resp = await HttpClientFactory.GetClient().GetAsync("https://www.xnxx.com/tags", ct);
-            if (resp.IsSuccessStatusCode)
-            {
-                var html = await resp.Content.ReadAsStringAsync(ct);
-                var doc = new HtmlAgilityPack.HtmlDocument();
-                doc.LoadHtml(html);
-
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var a in doc.DocumentNode.SelectNodes("//a[@href]") ?? Enumerable.Empty<HtmlAgilityPack.HtmlNode>())
-                {
-                    var href = a.GetAttributeValue("href", "");
-                    if (string.IsNullOrEmpty(href)) continue;
-
-                    var path = href.Split('?')[0].TrimEnd('/');
-                    if (!path.StartsWith("/tags/", StringComparison.OrdinalIgnoreCase) || path.Length <= 6)
-                        continue;
-                    var key = path[6..];
-                    if (!seen.Add(key)) continue;
-
-                    var name = System.Net.WebUtility.HtmlDecode(a.InnerText ?? "").Trim();
-                    if (string.IsNullOrWhiteSpace(name))
-                        name = key.Replace('-', ' ');
-
-                    results.Add(new CategoryItem
-                    {
-                        Name = name,
-                        Key = path,          // "/tags/xxx" → path-based browse
-                        Site = SiteType.XNxx
-                    });
-                }
-            }
+            var resp = await HttpClientFactory.GetClient().GetAsync("https://www.xnxx.com/", ct);
+            if (!resp.IsSuccessStatusCode) return new List<CategoryItem>();
+            var html = await resp.Content.ReadAsStringAsync(ct);
+            return CategoryParsing.ParseXNxx(html);
         }
         catch
         {
-            // Live parse failed — fall back to the curated list below
+            return new List<CategoryItem>();
         }
-
-        if (results.Count == 0)
-        {
-            results.AddRange(CuratedCategories.Select(c => new CategoryItem
-            {
-                Name = c.Name,
-                Key = c.Key,             // plain keyword → browsed via search
-                Site = SiteType.XNxx
-            }));
-        }
-        return results;
     }
 
     /// <summary>
-    /// Browse an XNXX tag/category. Keys are either a "/tags/xxx" path (from the
-    /// live tags page) or a plain keyword (curated fallback → keyword search).
+    /// Browse an XNXX category (/search/xxx, paginated as /search/xxx/{page}).
     /// </summary>
     public async Task<List<SearchResult>> BrowseCategoryAsync(string categoryKey, int page = 1, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(categoryKey)) return new List<SearchResult>();
 
-        // Keyword key → straight to search
+        // A plain keyword (legacy key) still works through search
         if (!categoryKey.StartsWith("/"))
             return await SearchAsync(categoryKey, page, ct);
 
-        // Path-based tag page; pagination appends /{page}
-        var url = "https://www.xnxx.com" + categoryKey;
-        if (page > 1) url += $"/{page}";
         try
         {
-            var resp = await HttpClientFactory.GetClient().GetAsync(url, ct);
-            if (resp.IsSuccessStatusCode)
-            {
-                var html = await resp.Content.ReadAsStringAsync(ct);
-                var parsed = ParseSearchHtml(html);
-                if (parsed.Count > 0) return parsed;
-            }
+            var resp = await HttpClientFactory.GetClient().GetAsync(BuildCategoryUrl(categoryKey, page), ct);
+            if (!resp.IsSuccessStatusCode) return new List<SearchResult>();
+            var html = await resp.Content.ReadAsStringAsync(ct);
+            return ParseSearchHtml(html);
         }
         catch
         {
-            // fall through to keyword search below
+            return new List<SearchResult>();
         }
-
-        // Tag page failed → search with the tag name
-        var tag = categoryKey.Split('/').LastOrDefault() ?? "";
-        return await SearchAsync(tag.Replace('-', ' '), page, ct);
     }
 
     // ══════════════════════════════════════════════════════

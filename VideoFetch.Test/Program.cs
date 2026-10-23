@@ -1,12 +1,46 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using VideoFetch.Services;
 using VideoFetch.Services.Sites;
+using VideoFetch.Test;
 
-// Quick integration test: verify all 4 sites' search works
+// Test entry point.
+//   (no args)  offline only: category parsing (fixtures) + CategoryTab layout smoke test
+//   --cats     + live: load each site's real categories and browse the first two
+//   --live     + live: categories and the 4-site search/parse integration test
+//   --probe    network only: print HTTP status for the pages the parsers depend on
+var live = args.Any(a => a.Equals("--live", StringComparison.OrdinalIgnoreCase));
+var catsOnly = args.Any(a => a.Equals("--cats", StringComparison.OrdinalIgnoreCase));
+var probeOnly = args.Any(a => a.Equals("--probe", StringComparison.OrdinalIgnoreCase));
+var dlIndex = Array.FindIndex(args, a => a.Equals("--dl", StringComparison.OrdinalIgnoreCase));
+if (probeOnly)
+{
+    await NetProbe.RunAsync();
+    return;
+}
+
+var categoriesOk = CategoryTests.Run();
+var uiOk = UiSmokeTest.Run();
+
+if (!live && !catsOnly)
+{
+    Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
+    Environment.ExitCode = categoriesOk && uiOk ? 0 : 1;
+    return;
+}
+
+var liveCategoriesOk = await CategoryLiveTests.RunAsync();
+
+if (catsOnly)
+{
+    Environment.ExitCode = categoriesOk && uiOk && liveCategoriesOk ? 0 : 1;
+    return;
+}
+
+Console.WriteLine("\n=== Live search integration test ===\n");
+
 var keyword = "teen";
-
 string Trunc(string? s, int max) => s == null ? "" : s.Length <= max ? s : s[..max];
 
 async Task TestSearch(ISiteParser parser)
@@ -15,16 +49,15 @@ async Task TestSearch(ISiteParser parser)
     {
         var results = await parser.SearchAsync(keyword);
         Console.WriteLine($"[{parser.Site}] Found {results.Count} results");
-        
+
         if (results.Count > 0)
         {
             foreach (var r in results.Take(3))
                 Console.WriteLine($"    -> {Trunc(r.Title, 50)} | {Trunc(r.Url, 60)} | {r.Duration} | {r.Author}");
-            
-            if (results.Count > 3) 
+
+            if (results.Count > 3)
                 Console.WriteLine($"    ... +{results.Count - 3} more results");
-                
-            // Test: click (fetch info) on first result URL
+
             if (!string.IsNullOrEmpty(results[0].Url))
             {
                 Console.WriteLine($"\n[{parser.Site}] Fetching video info from first result...");
@@ -35,26 +68,23 @@ async Task TestSearch(ISiteParser parser)
                     Console.WriteLine($"    Duration: {info.Duration}");
                     Console.WriteLine($"    Author: {info.Author}");
                     Console.WriteLine($"    Qualities: {info.Qualities.Count}");
-                    
-                    // Test stream resolution
-                    if (info.Qualities.Count > 0)
-                    {
-                        foreach (var q in info.Qualities)
-                            Console.WriteLine($"      - {q.Label} => {q.Value}");
-                    }
+                    foreach (var q in info.Qualities)
+                        Console.WriteLine($"      - {q.Label} => {q.Value}");
                 }
                 else
                     Console.WriteLine("    FAILED: could not fetch video info");
             }
         }
+
+        var cats = await parser.GetCategoriesAsync();
+        Console.WriteLine($"[{parser.Site}] Categories: {cats.Count}" +
+                          (cats.Count > 0 ? $" (first: {string.Join(", ", cats.Take(6).Select(c => c.Name))})" : ""));
     }
     catch (Exception ex)
     {
         Console.WriteLine($"[{parser.Site}] ERROR: {ex.Message}");
     }
 }
-
-Console.WriteLine($"=== Search Integration Test: \"{keyword}\" ===\n");
 
 await Task.WhenAll(
     TestSearch(new PornHubParser()),
@@ -64,3 +94,4 @@ await Task.WhenAll(
 );
 
 Console.WriteLine("\nDone!");
+Environment.ExitCode = categoriesOk && liveCategoriesOk ? 0 : 1;

@@ -111,7 +111,13 @@
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <StackPanel>
+                                        <!-- Status text can be long ("Failed: Response status
+                                             code does not indicate success…"), so ellipsize it
+                                             and show the full text in a tooltip instead of
+                                             clipping mid-glyph. -->
                                         <TextBlock Text="{Binding Status}" FontSize="11"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Status}"
                                                    Foreground="{Binding Status, Converter={StaticResource StatusToColor}}"
                                                    Padding="6,2"/>
                                         <TextBlock Text="{Binding Speed}" FontSize="10"

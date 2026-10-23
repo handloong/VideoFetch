@@ -20,9 +20,10 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
   </ItemGroup>
 
-  <!-- ffmpeg 用于 HLS(TS) 下载后的重封装为 MP4；缺失时应用仍可用（保留 .ts） -->
+  <!-- ffmpeg 用于 HLS(TS) 下载后的重封装为 MP4；缺失时应用仍可用（保留 .ts）
+       CI 打包单文件 exe 时用 -p:IncludeFfmpeg=false 排除，避免产物多出 160MB 的第二个文件 -->
   <ItemGroup>
-    <None Include="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('ffmpeg.exe')" />
+    <None Include="ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" Condition="Exists('ffmpeg.exe') AND '$(IncludeFfmpeg)' != 'false'" />
   </ItemGroup>
 
 </Project>

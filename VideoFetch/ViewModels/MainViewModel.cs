@@ -1121,8 +1121,9 @@ public partial class MainViewModel : ObservableObject
             foreach (var c in categories)
                 Categories.Add(c);
 
-            CategoryStatusMessage = string.Format(
-                LanguageService.GetString("Cat_Loaded"), CategorySite, categories.Count);
+            CategoryStatusMessage = categories.Count > 0
+                ? string.Format(LanguageService.GetString("Cat_Loaded"), CategorySite, categories.Count)
+                : string.Format(LanguageService.GetString("Cat_NoCategories"), CategorySite);
         }
         catch (Exception ex)
         {

@@ -42,33 +42,35 @@
                    Margin="0,0,0,4"
                    Visibility="{Binding CategoryStatusMessage, Converter={StaticResource NotNullOrEmpty}}"/>
 
-        <!-- ══ Category tags ══ -->
+        <!-- ══ Category tags ══
+             Sites expose between 12 (91pinse) and 105 (PornHub) real
+             categories, so the tag cloud scrolls vertically instead of
+             growing until it gets clipped by the results pane. -->
         <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,0,0,8"
                 Padding="6">
-            <ScrollViewer VerticalScrollBarVisibility="Disabled"
-                          HorizontalScrollBarVisibility="Disabled">
-                <ListBox ItemsSource="{Binding Categories}"
-                         Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel/>
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type models:CategoryItem}">
-                            <Button Content="{Binding Name}"
-                                    Command="{Binding DataContext.BrowseCategoryCommand,
-                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                    CommandParameter="{Binding}"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    FontSize="11" Padding="9,3" Margin="3"
-                                    ToolTip="{Binding Name}"/>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </ScrollViewer>
+            <ListBox ItemsSource="{Binding Categories}"
+                     MaxHeight="112"
+                     Background="Transparent" BorderThickness="0"
+                     ScrollViewer.CanContentScroll="False"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type models:CategoryItem}">
+                        <Button Content="{Binding Name}"
+                                Command="{Binding DataContext.BrowseCategoryCommand,
+                                        RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                FontSize="11" Padding="9,3" Margin="3"
+                                ToolTip="{Binding Name}"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </Border>
 
         <!-- ══ Results container ══ -->

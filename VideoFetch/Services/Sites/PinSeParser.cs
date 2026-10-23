@@ -160,21 +160,70 @@ public class PinSeParser : ISiteParser
     // ═══════════════════════════════════════════════════════
 
     /// <summary>
-    /// 91Pinse has no dedicated category listing page; categories are tag
-    /// keywords browsed through the site's keyword search (the default
-    /// BrowseCategoryAsync implementation calls SearchAsync).
+    /// 91Pinse has no category taxonomy of its own. It publishes a "热门搜索"
+    /// (popular searches) pill cloud on listing pages, plus a "热门" chip row on
+    /// the homepage. Those keyword lists are the real browsing entry points —
+    /// the previous hard-coded 国产/中文字幕/日韩… list matched nothing the site
+    /// actually serves, which is what "分类都是不对的" was about.
+    ///
+    /// Order: /v/ (full cloud, ~100 tags) → homepage (10 chips).
     /// </summary>
-    private static readonly string[] CuratedCategories =
-    [
-        "国产", "中文字幕", "日韩", "欧美", "动漫",
-        "探花", "直播", "网红", "自拍", "剧情",
-    ];
-
-    public Task<List<CategoryItem>> GetCategoriesAsync(CancellationToken ct = default)
+    public async Task<List<CategoryItem>> GetCategoriesAsync(CancellationToken ct = default)
     {
-        return Task.FromResult(CuratedCategories
-            .Select(k => new CategoryItem { Name = k, Key = k, Site = SiteType.PinSe })
-            .ToList());
+        foreach (var url in new[] { $"{BaseUrl}/v/", BaseUrl + "/" })
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+                req.Headers.TryAddWithoutValidation("Accept", AcceptHdr);
+                req.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
+
+                using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
+                if (!resp.IsSuccessStatusCode) continue;
+
+                var html = await resp.Content.ReadAsStringAsync(ct);
+                var categories = CategoryParsing.ParsePinSe(html);
+                if (categories.Count > 0) return categories;
+            }
+            catch
+            {
+                // try the next page
+            }
+        }
+
+        return new List<CategoryItem>();
+    }
+
+    /// <summary>Category (keyword search) page URL for a key from GetCategoriesAsync.</summary>
+    public static string BuildCategoryUrl(string categoryKey, int page = 1)
+        => CategoryParsing.BuildPinSeUrl(categoryKey, page);
+
+    /// <summary>
+    /// Browse a 91Pinse "category" — the key is a keyword, browsed through
+    /// /v/search?keyword=…&amp;page=N (20 items per page).
+    /// </summary>
+    public async Task<List<SearchResult>> BrowseCategoryAsync(string categoryKey, int page = 1, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(categoryKey)) return new List<SearchResult>();
+
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, BuildCategoryUrl(categoryKey, page));
+            req.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+            req.Headers.TryAddWithoutValidation("Accept", AcceptHdr);
+            req.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
+
+            using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return new List<SearchResult>();
+
+            var html = await resp.Content.ReadAsStringAsync(ct);
+            return ParseSearchHtml(html);
+        }
+        catch
+        {
+            return new List<SearchResult>();
+        }
     }
 
     // ═══════════════════════════════════════════════════════

@@ -4,11 +4,16 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Needed by the offscreen UI smoke test (renders CategoryTab.xaml) -->
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="test_output\**" />
     <EmbeddedResource Remove="test_output\**" />
     <None Remove="test_output\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.11.61" />

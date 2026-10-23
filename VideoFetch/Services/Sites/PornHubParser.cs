@@ -162,113 +162,59 @@ public class PornHubParser : ISiteParser
     // ═══════════════════════════════════════════════════════
 
     private const string UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+    private const string CookieHeader = "platform=pc; ageconfirmed=1; age_verified=1; country=CN";
 
-    /// <summary>Fallback category list (well-known PornHub category slugs).</summary>
-    private static readonly (string Slug, string Name)[] CuratedCategories =
-    [
-        ("amateur", "Amateur"), ("anal", "Anal"), ("asian", "Asian"), ("bbw", "BBW"),
-        ("big-ass", "Big Ass"), ("big-tits", "Big Tits"), ("blonde", "Blonde"),
-        ("blowjob", "Blowjob"), ("brunette", "Brunette"), ("creampie", "Creampie"),
-        ("cumshot", "Cumshot"), ("ebony", "Ebony"), ("hentai", "Hentai"),
-        ("interracial", "Interracial"), ("japanese", "Japanese"), ("latina", "Latina"),
-        ("lesbian", "Lesbian"), ("milf", "MILF"), ("public", "Public"),
-        ("redhead", "Redhead"), ("solo-female", "Solo Female"), ("teen", "Teen"),
-        ("threesome", "Threesome"), ("toys", "Toys"), ("webcam", "Webcam"),
-    ];
+    /// <summary>Category page URL for a key from GetCategoriesAsync.</summary>
+    public static string BuildCategoryUrl(string categoryKey, int page = 1)
+        => CategoryParsing.BuildPornHubUrl(categoryKey, page);
 
     /// <summary>
-    /// List PornHub categories. Tries the live /categories page first;
-    /// falls back to a built-in list when the markup changed or the page is unreachable.
+    /// List PornHub categories from the live /categories grid
+    /// (li.catPic, ~115 entries with real names + video counts).
+    /// Returns an empty list when the page is unreachable — the caller shows
+    /// "load failed" instead of inventing category names.
     /// </summary>
     public async Task<List<CategoryItem>> GetCategoriesAsync(CancellationToken ct = default)
     {
-        var results = new List<CategoryItem>();
         try
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, "https://www.pornhub.com/categories");
-            req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1; country=CN");
-            req.Headers.Add("User-Agent", UA);
-
-            var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
-            if (resp.IsSuccessStatusCode)
-            {
-                var html = await resp.Content.ReadAsStringAsync(ct);
-                var doc = new HtmlAgilityPack.HtmlDocument();
-                doc.LoadHtml(html);
-
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var a in doc.DocumentNode.SelectNodes("//a[contains(@href,'/categories/')]") ?? Enumerable.Empty<HtmlAgilityPack.HtmlNode>())
-                {
-                    var href = a.GetAttributeValue("href", "");
-                    var slug = href.Split('?', '#')[0].TrimEnd('/').Split('/').LastOrDefault();
-                    if (string.IsNullOrEmpty(slug) || !seen.Add(slug)) continue;
-
-                    var nameNode = a.SelectSingleNode(".//div[contains(@class,'category-title')]");
-                    var name = nameNode?.InnerText ?? a.GetAttributeValue("title", "");
-                    if (string.IsNullOrWhiteSpace(name)) name = a.InnerText;
-                    name = System.Net.WebUtility.HtmlDecode(name ?? "").Trim();
-                    // strip trailing video-count text like "12,345 videos"
-                    name = Regex.Replace(name, @"[\d,.+\s]*videos?\s*$", "", RegexOptions.IgnoreCase).Trim();
-                    if (string.IsNullOrEmpty(name)) name = slug.Replace('-', ' ');
-
-                    var count = 0;
-                    var countText = a.SelectSingleNode(".//var")?.InnerText ?? "";
-                    var countMatch = Regex.Match(countText, @"[\d,.]+");
-                    if (countMatch.Success)
-                        int.TryParse(countMatch.Value.Replace(",", "").Replace(".", ""), out count);
-
-                    results.Add(new CategoryItem
-                    {
-                        Name = name,
-                        Key = slug,
-                        Site = SiteType.PornHub,
-                        VideoCount = count
-                    });
-                }
-            }
+            var html = await GetHtmlAsync("https://www.pornhub.com/categories", ct);
+            return CategoryParsing.ParsePornHub(html);
         }
         catch
         {
-            // Live parse failed — fall back to the curated list below
+            return new List<CategoryItem>();
         }
-
-        if (results.Count == 0)
-        {
-            results.AddRange(CuratedCategories.Select(c => new CategoryItem
-            {
-                Name = c.Name,
-                Key = c.Slug,
-                Site = SiteType.PornHub
-            }));
-        }
-        return results;
     }
 
     /// <summary>
-    /// Browse videos of a PornHub category. Category listing pages use the same
-    /// pcVideoListItem markup as search, so the search parser is reused.
+    /// Browse videos of a PornHub category (/video?c={id}&amp;page=N).
+    /// Category listing pages reuse the search markup.
     /// </summary>
     public async Task<List<SearchResult>> BrowseCategoryAsync(string categoryKey, int page = 1, CancellationToken ct = default)
     {
-        var results = new List<SearchResult>();
-        if (string.IsNullOrWhiteSpace(categoryKey)) return results;
+        if (string.IsNullOrWhiteSpace(categoryKey)) return new List<SearchResult>();
 
-        var url = $"https://www.pornhub.com/video?category={Uri.EscapeDataString(categoryKey)}&page={page}";
         try
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, url);
-            req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1; country=CN");
-            req.Headers.Add("User-Agent", UA);
-
-            var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode) return results;
-            var html = await resp.Content.ReadAsStringAsync(ct);
+            var html = await GetHtmlAsync(BuildCategoryUrl(categoryKey, page), ct);
             return ParseSearchResultsHtml(html);
         }
         catch
         {
-            return results;
+            return new List<SearchResult>();
         }
+    }
+
+    private static async Task<string> GetHtmlAsync(string url, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.TryAddWithoutValidation("Cookie", CookieHeader);
+        req.Headers.TryAddWithoutValidation("User-Agent", UA);
+
+        using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) return string.Empty;
+        return await resp.Content.ReadAsStringAsync(ct);
     }
 
     private static string ParseIso8601Duration(string iso)

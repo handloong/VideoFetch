@@ -50,7 +50,8 @@
     <sys:String x:Key="Btn_LoadCategories">🔄 加载分类</sys:String>
     <sys:String x:Key="Cat_Loading">正在加载 {0} 分类...</sys:String>
     <sys:String x:Key="Cat_Loaded">{0}：共 {1} 个分类，点击标签浏览视频</sys:String>
-    <sys:String x:Key="Cat_LoadFailed">在线分类解析失败，已使用内置分类（{0}）</sys:String>
+    <sys:String x:Key="Cat_LoadFailed">在线分类解析失败，请检查网络或代理后重试（{0}）</sys:String>
+    <sys:String x:Key="Cat_NoCategories">{0}：没有解析到分类，站点页面结构可能已变化</sys:String>
     <sys:String x:Key="Cat_Browsing">正在浏览分类「{0}」第 {1} 页...</sys:String>
     <sys:String x:Key="Cat_Browsed">分类「{0}」已加载 {1} 个视频</sys:String>
     <sys:String x:Key="Cat_NoResults">该分类没有解析到视频</sys:String>

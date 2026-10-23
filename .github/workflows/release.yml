@@ -1,0 +1,154 @@
+name: Release
+
+# 推送 v* 标签即自动打包两种单文件 exe 并发布 Release：
+#   - framework-dependent : 体积小，用户需安装 .NET 8 Desktop Runtime
+#   - self-contained      : 体积大，双击即用，无需安装运行时
+#
+# 版本号取自标签（v1.5 -> 1.5），并写进程序集版本。
+# 本地推送下一个版本：release.bat（自动 v1.5 -> v1.6）
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  RID: win-x64
+
+jobs:
+  # ── 1. 离线测试：分类解析夹具 + CategoryTab 布局冒烟 ──────────
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore VideoFetch.sln
+
+      - name: Offline category + UI tests
+        run: dotnet run --project VideoFetch.Test -c Release
+
+  # ── 2. 打包两种单文件版本 ────────────────────────────────────
+  build:
+    needs: test
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: framework-dependent
+            self_contained: false
+            native_extract: true   # 把 e_sqlite3 等原生库也塞进单文件
+            compress: false      # 压缩仅支持 self-contained（NETSDK1176）
+          - name: self-contained
+            self_contained: true
+            native_extract: true
+            compress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          if ($ref -match '^v(.+)$') {
+            $version = $Matches[1]
+          } else {
+            # 手动触发：回退到 csproj 里的 <Version>
+            [xml]$proj = Get-Content VideoFetch/VideoFetch.csproj
+            $version = $proj.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version $version (ref: $ref)"
+
+      - name: Publish ${{ matrix.name }}
+        shell: pwsh
+        run: |
+          $out = "publish/${{ matrix.name }}"
+          $dotnetArgs = @(
+            "publish", "VideoFetch/VideoFetch.csproj",
+            "-c", "Release",
+            "-r", $env:RID,
+            "--self-contained", "${{ matrix.self_contained }}",
+            "-p:PublishSingleFile=true",
+            "-p:IncludeNativeLibrariesForSelfExtract=${{ matrix.native_extract }}",
+            "-p:Version=${{ steps.ver.outputs.version }}",
+            "-p:IncludeFfmpeg=false",
+            "-p:DebugType=none",
+            "-p:GenerateDocumentationFile=false",
+            "-o", $out
+          )
+          if ("${{ matrix.compress }}" -eq "true") {
+            $dotnetArgs += "-p:EnableCompressionInSingleFile=true"
+          }
+          dotnet @dotnetArgs
+          if ($LASTEXITCODE -ne 0) { throw "publish failed" }
+
+      - name: Verify single-file output
+        shell: pwsh
+        run: |
+          $out = "publish/${{ matrix.name }}"
+          $files = Get-ChildItem $out -File
+          $files | Format-Table Name, Length
+          $exe = $files | Where-Object { $_.Extension -eq '.exe' }
+          if (-not $exe) { throw "no exe produced" }
+          if ($files.Count -gt 1) { throw "expected a single file, got $($files.Count)" }
+          $sizeMb = [math]::Round($exe.Length / 1MB, 1)
+          Write-Host "OK: $($exe.Name) ($sizeMb MB)"
+
+      - name: Zip
+        shell: pwsh
+        run: |
+          $zip = "VideoFetch-${{ matrix.name }}-v${{ steps.ver.outputs.version }}-$env:RID.zip"
+          Compress-Archive -Path "publish/${{ matrix.name }}/*" -DestinationPath $zip -CompressionLevel Optimal -Force
+          Write-Host "created $zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VideoFetch-${{ matrix.name }}-v${{ steps.ver.outputs.version }}
+          path: VideoFetch-${{ matrix.name }}-v${{ steps.ver.outputs.version }}-${{ env.RID }}.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # ── 3. 汇总成一个 Release ────────────────────────────────────
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -lh dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: dist/*.zip
+          generate_release_notes: true
+          body: |
+            ## 下载说明
+
+            | 版本 | 说明 |
+            |---|---|
+            | `framework-dependent` | 体积小，需先安装 [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) |
+            | `self-contained` | 免安装运行时，解压后双击 `VideoFetch.exe` 即可 |
+
+            两者都是**单文件** exe。需要 HLS(TS) 自动转 MP4 时，把 `ffmpeg.exe` 放到 exe 同目录即可（不放也能用，产出 .ts）。
