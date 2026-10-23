@@ -109,6 +109,16 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Duration}" Width="70">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <TextBlock Text="{Binding DurationText}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               ToolTip="{Binding Duration}"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
                         <GridViewColumn Header="{DynamicResource Queue_Header_Progress}" Width="100">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
@@ -134,6 +144,16 @@
                                         <TextBlock Text="{Binding Speed}" FontSize="10"
                                                    Foreground="{StaticResource TextSecondaryBrush}" Padding="6,0"/>
                                     </StackPanel>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="{DynamicResource Queue_Header_DownloadTime}" Width="125">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <!-- 完成时间；还在排队/下载中显示入队时间 -->
+                                    <TextBlock Text="{Binding DownloadTimeText}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>

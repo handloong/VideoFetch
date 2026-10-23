@@ -1129,7 +1129,8 @@ public partial class MainViewModel : ObservableObject
             var bestQuality = info.Qualities[0];
 
             // Enqueue download (recordService will be called by DownloadQueueService on completion)
-            _queue.Enqueue(info, bestQuality.Value);
+            // 时长取 target 而不是 result：双击选中行时 result 可能是 null，target 才是真正那条
+            _queue.Enqueue(info, bestQuality.Value, target?.Duration ?? string.Empty);
 
             SetResultStatus(target, $"\u2705 Download started: {info.Title} ({bestQuality.Label})");
         }
@@ -1284,7 +1285,7 @@ public partial class MainViewModel : ObservableObject
                         continue;
                     }
 
-                    _queue.Enqueue(info, info.Qualities[0].Value);
+                    _queue.Enqueue(info, info.Qualities[0].Value, result.Duration);
                     successCount++;
                 }
                 catch (OperationCanceledException)

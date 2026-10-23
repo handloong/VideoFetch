@@ -121,6 +121,8 @@
     <sys:String x:Key="State_Deleted">已删除</sys:String>
     <sys:String x:Key="State_FileMissing">文件已删除</sys:String>
     <sys:String x:Key="Queue_Header_Title">标题</sys:String>
+    <sys:String x:Key="Queue_Header_Duration">时长</sys:String>
+    <sys:String x:Key="Queue_Header_DownloadTime">下载时间</sys:String>
     <sys:String x:Key="Queue_Header_Progress">进度</sys:String>
     <sys:String x:Key="Queue_Header_Status">状态</sys:String>
     <sys:String x:Key="Queue_Header_Speed">速度</sys:String>

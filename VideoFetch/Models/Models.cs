@@ -126,6 +126,8 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     private DownloadState _state = DownloadState.Queued;
     private string _lastError = string.Empty;
     private string _note = string.Empty;
+    private string _duration = string.Empty;
+    private DateTime? _completedAt;
 
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Title { get; set; } = string.Empty;
@@ -134,6 +136,46 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public string Quality { get; set; } = string.Empty;
     public SiteType Site { get; set; }
     public DateTime AddedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// 视频时长文案（站点原样，如 "0:02:14" / "11 min" / "13分钟"）。
+    /// 入队时有 <see cref="VideoInfo.Duration"/> 就用它，没有就用列表里那一条的。
+    /// </summary>
+    public string Duration
+    {
+        get => _duration;
+        set
+        {
+            _duration = value ?? string.Empty;
+            DurationSeconds = Services.DurationText.ToSeconds(_duration);
+            OnPropertyChanged(nameof(Duration));
+            OnPropertyChanged(nameof(DurationText));
+        }
+    }
+
+    /// <summary>时长秒数，解析不出为 0。</summary>
+    public int DurationSeconds { get; private set; }
+
+    /// <summary>界面显示的时长；没有就显示「—」，不要留白让人以为坏了。</summary>
+    public string DurationText => string.IsNullOrWhiteSpace(_duration) ? "—" : _duration;
+
+    /// <summary>下载结束（成功）的时刻；还没下完就是 null。</summary>
+    public DateTime? CompletedAt
+    {
+        get => _completedAt;
+        set
+        {
+            _completedAt = value;
+            OnPropertyChanged(nameof(CompletedAt));
+            OnPropertyChanged(nameof(DownloadTimeText));
+        }
+    }
+
+    /// <summary>
+    /// 「下载时间」列：下好了显示完成时刻，还在排队/下载中显示入队时刻。
+    /// 历史记录（从 SQLite 读回来的）没有 CompletedAt，AddedAt 就是当时的下载时间。
+    /// </summary>
+    public string DownloadTimeText => (_completedAt ?? AddedAt).ToString("yyyy-MM-dd HH:mm");
 
     /// <summary>
     /// Task is still active (queued or downloading). Set false on
@@ -486,6 +528,9 @@ public class DownloadRecord
 
     /// <summary>Video title at time of download</summary>
     public string Title { get; set; } = string.Empty;
+
+    /// <summary>视频时长文案（站点原样），队列里「时长」列用</summary>
+    public string Duration { get; set; } = string.Empty;
 
     /// <summary>Source site name</summary>
     public string Site { get; set; } = string.Empty;

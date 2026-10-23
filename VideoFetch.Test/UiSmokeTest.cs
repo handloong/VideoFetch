@@ -154,6 +154,10 @@ internal static class UiSmokeTest
     {
         var ok = true;
 
+        // 排序偏好是会被记住的：上次跑测试（或用户用过）留下的值会带进 ViewModel。
+        // 先复位，别让这个用例依赖机器上的 settings.json。
+        vm.ResultSort = ResultSort.Default;
+
         ok &= Check("ui-smoke: 排序选项 3 项", vm.SortOptions.Count == 3, vm.SortOptions.Count.ToString());
         ok &= Check("ui-smoke: 排序文案来自语言资源",
             vm.SortOptions[0].Label == (Application.Current.TryFindResource("Sort_Default") as string),
@@ -589,6 +593,9 @@ internal static class UiSmokeTest
         {
             Title = "已完成的任务", Url = "https://example.test/v/done",
             State = DownloadState.Completed, IsCompleted = true, Progress = 100,
+            Duration = "0:02:14",
+            AddedAt = new DateTime(2026, 10, 23, 9, 5, 0),
+            CompletedAt = new DateTime(2026, 10, 23, 9, 7, 0),
             OutputPath = Path.Combine(Path.GetTempPath(), "vf-ui-smoke-done.mp4")
         };
 
@@ -681,8 +688,36 @@ internal static class UiSmokeTest
         ok &= Check("ui-smoke: 排队任务被标记为已取消",
             queued.State == DownloadState.Cancelled, queued.State.ToString());
 
-        // 「重试全部」：失败/已取消的一键重新排队。
-        // 这里只验证按钮存在、可见、绑到真命令 —— 真按下去会启动真实下载，
+        // 表格新增两列：时长 + 下载时间。
+        // 前面几步把视图停在「已删除」，列表是空的 → 先切回「全部」再断言单元格。
+        vm.QueueFilter = QueueFilter.All;
+        tab.UpdateLayout();
+
+        var queueList = FindDescendant<ListView>(tab, l => ReferenceEquals(l.ItemsSource, vm.QueueItemsView));
+        var columns = (queueList?.View as GridView)?.Columns
+            .Select(c => c.Header as string ?? string.Empty).ToList() ?? new List<string>();
+        ok &= Check("ui-smoke: 队列表格有「时长」列", columns.Contains(Btn("Queue_Header_Duration")),
+            string.Join(" | ", columns));
+        ok &= Check("ui-smoke: 队列表格有「下载时间」列",
+            columns.Contains(Btn("Queue_Header_DownloadTime")));
+
+        // 单元格真的渲染出了内容（只断言列头，绑定断了也发现不了）
+        var completedRow = vm.DownloadItems.FirstOrDefault(i => i.IsCompleted);
+        if (completedRow != null)
+        {
+            ok &= Check("ui-smoke: 已完成行时长文案", completedRow.DurationText == "0:02:14",
+                completedRow.DurationText);
+            ok &= Check("ui-smoke: 下载时间用完成时刻",
+                completedRow.DownloadTimeText == "2026-10-23 09:07", completedRow.DownloadTimeText);
+
+            // 单元格真的渲染出来了（虚拟化下只查可见行）
+            ok &= Check("ui-smoke: 时长列渲染出 0:02:14",
+                FindDescendant<TextBlock>(tab, t => t.Text == "0:02:14") != null);
+            ok &= Check("ui-smoke: 下载时间列渲染出 2026-10-23 09:07",
+                FindDescendant<TextBlock>(tab, t => t.Text == "2026-10-23 09:07") != null);
+        }
+
+        // 「重试全部」：失败/已取消的一键重新排队。        // 这里只验证按钮存在、可见、绑到真命令 —— 真按下去会启动真实下载，
         // 队列行为本身由 DownloadQueueTests 的 retry-all 覆盖。
         ok &= Check("ui-smoke: 有失败任务时 FailedCount > 0", vm.FailedCount > 0, vm.FailedCount.ToString());
         var retryAll = FindDescendant<Button>(tab, b => (b.Content as string) == Btn("Btn_RetryAll"));
@@ -715,6 +750,7 @@ internal static class UiSmokeTest
         CollectVisibleButtons(row, result);
         return result;
     }
+
 
     private static void CollectVisibleButtons(DependencyObject root, List<string> acc)
     {

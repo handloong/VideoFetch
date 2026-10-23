@@ -97,6 +97,7 @@ public class DownloadQueueService
                 State = fileExists ? DownloadState.Completed : DownloadState.FileMissing,
                 Speed = string.Empty,
                 AddedAt = rec.DownloadedAt,
+                Duration = rec.Duration,
                 IsActive = false
             });
         }
@@ -110,7 +111,11 @@ public class DownloadQueueService
     /// Add a new download to the queue and start it (subject to concurrency limit).
     /// Returns false if the same URL is already active in the queue (in-memory dedup).
     /// </summary>
-    public bool Enqueue(VideoInfo info, string qualityKey)
+    /// <param name="durationHint">
+    /// 详情页没给时长时用它兜底（搜索结果/分类列表里本来就解析出了时长，
+    /// 91pinse 的详情页只能靠这个）。
+    /// </param>
+    public bool Enqueue(VideoInfo info, string qualityKey, string? durationHint = null)
     {
         // 内存去重：检查同一URL是否已在队列中（排队中/下载中）
         if (Items.Any(i => string.Equals(i.Url, info.Url, StringComparison.OrdinalIgnoreCase) && i.IsActive))
@@ -135,6 +140,7 @@ public class DownloadQueueService
             OutputPath = outputPath,
             Quality = qualityKey,
             Site = info.Site,
+            Duration = string.IsNullOrWhiteSpace(info.Duration) ? durationHint ?? "" : info.Duration,
             State = DownloadState.Queued,
             IsActive = true
         };
@@ -241,6 +247,7 @@ public class DownloadQueueService
             if (!IsCurrentRun()) return;        // 结果已作废，别去覆写新一轮的状态
             item.OutputPath = finalPath;
             item.Progress = 100;
+            item.CompletedAt = DateTime.Now;
             item.State = DownloadState.Completed;
             item.IsCompleted = true;
             item.HasFailed = false;
@@ -254,7 +261,7 @@ public class DownloadQueueService
                     ? new System.IO.FileInfo(item.OutputPath).Length : 0L;
                 var siteName = item.Site.ToString();
                 _recordService.InsertRecord(item.Url, item.Title, siteName,
-                    item.Quality, item.OutputPath, fileSize);
+                    item.Quality, item.OutputPath, fileSize, item.Duration);
             }
             catch { /* 记录失败不影响下载流程 */ }
 

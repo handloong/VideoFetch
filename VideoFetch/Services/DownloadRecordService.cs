@@ -52,11 +52,36 @@ public class DownloadRecordService
                 Quality TEXT NOT NULL DEFAULT '',
                 FilePath TEXT NOT NULL DEFAULT '',
                 FileSize INTEGER NOT NULL DEFAULT 0,
-                DownloadedAt TEXT NOT NULL DEFAULT ''
+                DownloadedAt TEXT NOT NULL DEFAULT '',
+                Duration TEXT NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_dl_url ON DownloadRecords(Url);
         ";
         cmd.ExecuteNonQuery();
+
+        EnsureColumn(conn, "DownloadRecords", "Duration", "TEXT NOT NULL DEFAULT ''");
+    }
+
+    /// <summary>
+    /// 老库补列。CREATE TABLE IF NOT EXISTS 只对新库生效，已经存在的 downloads.db
+    /// 不会自动多出 Duration 列 —— 不补的话历史记录的时长永远是空。
+    /// </summary>
+    private static void EnsureColumn(SqliteConnection conn, string table, string column, string definition)
+    {
+        using (var check = conn.CreateCommand())
+        {
+            check.CommandText = $"PRAGMA table_info({table})";
+            using var r = check.ExecuteReader();
+            while (r.Read())
+            {
+                if (string.Equals(r.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+        }
+
+        using var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition}";
+        alter.ExecuteNonQuery();
     }
 
     // ══════════════════════════════════════════════
@@ -109,7 +134,8 @@ public class DownloadRecordService
     /// <param name="quality">Quality label</param>
     /// <param name="filePath">Absolute path to saved video file</param>
     /// <param name="fileSize">File size in bytes</param>
-    public void InsertRecord(string url, string title, string site, string quality, string filePath, long fileSize = 0)
+    public void InsertRecord(string url, string title, string site, string quality, string filePath,
+        long fileSize = 0, string duration = "")
     {
         if (string.IsNullOrWhiteSpace(url)) return;
 
@@ -118,8 +144,8 @@ public class DownloadRecordService
         using var cmd = conn.CreateCommand();
         // 使用 INSERT OR REPLACE: 同一URL第二次下载 → 覆盖旧记录
         cmd.CommandText = @"
-            INSERT OR REPLACE INTO DownloadRecords (Url, Title, Site, Quality, FilePath, FileSize, DownloadedAt)
-            VALUES (@u, @t, @s, @q, @p, @z, @d)";
+            INSERT OR REPLACE INTO DownloadRecords (Url, Title, Site, Quality, FilePath, FileSize, DownloadedAt, Duration)
+            VALUES (@u, @t, @s, @q, @p, @z, @d, @dur)";
         cmd.Parameters.AddWithValue("@u", url.Trim());
         cmd.Parameters.AddWithValue("@t", title ?? "");
         cmd.Parameters.AddWithValue("@s", site ?? "");
@@ -127,6 +153,7 @@ public class DownloadRecordService
         cmd.Parameters.AddWithValue("@p", filePath ?? "");
         cmd.Parameters.AddWithValue("@z", fileSize);
         cmd.Parameters.AddWithValue("@d", DateTime.Now.ToString("O"));
+        cmd.Parameters.AddWithValue("@dur", duration ?? "");
         cmd.ExecuteNonQuery();
     }
 
@@ -202,7 +229,9 @@ public class DownloadRecordService
             Quality = r.GetString(4),
             FilePath = r.GetString(5),
             FileSize = r.GetInt64(6),
-            DownloadedAt = DateTime.TryParse(r.GetString(7), out var d) ? d : DateTime.MinValue
+            DownloadedAt = DateTime.TryParse(r.GetString(7), out var d) ? d : DateTime.MinValue,
+            // 老库刚补上这一列时可能是 NULL，读不到就当空
+            Duration = r.FieldCount > 8 && !r.IsDBNull(8) ? r.GetString(8) : string.Empty
         };
     }
 }

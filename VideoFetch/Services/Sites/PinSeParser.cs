@@ -68,6 +68,11 @@ public class PinSeParser : ISiteParser
             // Title
             info.Title = ExtractPageTitle(html);
 
+            // 时长：详情页没有专门的时长节点（那 19 个 video-duration 都是
+            // "相关推荐"卡片上的），只有 meta description 里带着主视频的：
+            //   content="标题 · 作者 · 0:01:44 · 91PinSe"
+            info.Duration = ExtractMetaDuration(html);
+
             // Step 2 — Playback API（现行布局）。播放器是 fetch POST
             // /api/videos/{id}/playback 才拿到签名 m3u8，页面 HTML 里一个媒体
             // 地址都没有 —— 只靠正则抓页面必然得到 0 个画质，界面就报
@@ -257,6 +262,18 @@ public class PinSeParser : ISiteParser
     // ═══════════════════════════════════════════════════════
     //  PRIVATE — Page Title
     // ═══════════════════════════════════════════════════════
+
+    /// <summary>
+    /// 从 meta description 里取主视频时长（"标题 · 作者 · 0:01:44 · 91PinSe"）。
+    /// 只认被 "·" 夹住的时钟格式，避免抓到相关推荐卡片的 0:00:17。
+    /// </summary>
+    private static string ExtractMetaDuration(string html)
+    {
+        var m = Regex.Match(html,
+            @"<meta\s+name=""description""[^>]*content=""[^""]*·\s*(\d{1,2}:\d{2}:\d{2})\s*·",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return m.Success ? m.Groups[1].Value : string.Empty;
+    }
 
     private static string ExtractPageTitle(string html)
     {

@@ -41,6 +41,7 @@ internal static class DownloadQueueTests
         await Safe("restore-missing", RestoreCompletedWithMissingFileAsync);
         await Safe("retry", RetryFailedTaskAsync);
         await Safe("retry-all", RetryAllFailedAsync);
+        await Safe("duration-time", DurationAndTimeAsync);
         await Safe("cancel-running", CancelRunningTaskAsync);
         await Safe("cancel-then-retry", CancelThenRetryImmediatelyAsync);
         await Safe("purge", PurgeTaskAsync);
@@ -405,6 +406,77 @@ internal static class DownloadQueueTests
     }
 
     // ══════════════════════════════════════════════════════════
+    //  11. 时长与下载时间（队列页新增的两列）
+    // ══════════════════════════════════════════════════════════
+
+    private static async Task DurationAndTimeAsync()
+    {
+        // ① 详情页给了时长
+        using (var h = new Harness())
+        {
+            h.Queue.Enqueue(Info("https://site.test/v/d1", "带时长", "0:02:14"), QualityKey);
+            await WaitUntilAsync(() => h.Queue.Items.Count == 1);
+            var item = h.Queue.Items[0];
+
+            Check("duration: 用详情页的时长", item.Duration == "0:02:14", item.Duration);
+            Check("duration: 秒数", item.DurationSeconds == 134, item.DurationSeconds.ToString());
+            Check("duration: 显示文案", item.DurationText == "0:02:14", item.DurationText);
+
+            await WaitUntilAsync(() => !item.IsActive);
+            Check("time: 完成时记下时刻", item.CompletedAt.HasValue);
+            Check("duration: 时长写进下载记录",
+                h.Records.GetByUrl(item.Url)?.Duration == "0:02:14",
+                h.Records.GetByUrl(item.Url)?.Duration);
+        }
+
+        // ② 详情页没时长 → 用列表里那一条的（91pinse 详情页没有时长节点）
+        using (var h = new Harness())
+        {
+            h.Queue.Enqueue(Info("https://site.test/v/d2", "无时长"), QualityKey, "13分钟");
+            await WaitUntilAsync(() => h.Queue.Items.Count == 1);
+            var item = h.Queue.Items[0];
+
+            Check("duration: 详情页缺时长时用列表兜底", item.Duration == "13分钟", item.Duration);
+            Check("duration: 兜底值也能算秒数", item.DurationSeconds == 780, item.DurationSeconds.ToString());
+        }
+
+        // ②b 详情页有时长时优先用详情页（忽略兜底）
+        using (var h = new Harness())
+        {
+            h.Queue.Enqueue(Info("https://site.test/v/d2b", "两者都有", "0:01:00"), QualityKey, "13分钟");
+            await WaitUntilAsync(() => h.Queue.Items.Count == 1);
+            Check("duration: 详情页优先", h.Queue.Items[0].Duration == "0:01:00", h.Queue.Items[0].Duration);
+        }
+
+        // ③ 都没有 → 占位符，不留白
+        using (var h = new Harness())
+        {
+            h.Queue.Enqueue(Info("https://site.test/v/d3", "没有时长"), QualityKey);
+            await WaitUntilAsync(() => h.Queue.Items.Count == 1);
+            var item = h.Queue.Items[0];
+
+            Check("duration: 没有时长显示占位符", item.DurationText == "—", item.DurationText);
+            Check("duration: 没有时长秒数为 0", item.DurationSeconds == 0, item.DurationSeconds.ToString());
+        }
+
+        // ④ 下载时间：完成前用入队时间，完成后用完成时间，格式 年-月-日 时:分
+        var fresh = new DownloadItem { AddedAt = new DateTime(2026, 10, 23, 9, 7, 0) };
+        Check("time: 未完成时用入队时间",
+            fresh.DownloadTimeText == "2026-10-23 09:07", fresh.DownloadTimeText);
+
+        fresh.CompletedAt = new DateTime(2026, 10, 23, 21, 5, 0);
+        Check("time: 完成后用完成时间",
+            fresh.DownloadTimeText == "2026-10-23 21:05", fresh.DownloadTimeText);
+
+        // ⑤ 时长文案改动要通知界面（列是绑定的）
+        var notified = new List<string>();
+        fresh.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? "");
+        fresh.Duration = "10 min";
+        Check("duration: 改时长会通知界面",
+            notified.Contains(nameof(DownloadItem.Duration)) && notified.Contains(nameof(DownloadItem.DurationText)));
+    }
+
+    // ══════════════════════════════════════════════════════════
     //  9. 下载中取消
     // ══════════════════════════════════════════════════════════
 
@@ -570,11 +642,12 @@ internal static class DownloadQueueTests
 
     private const string QualityKey = "hls_720";
 
-    private static VideoInfo Info(string url, string title) => new()
+    private static VideoInfo Info(string url, string title, string duration = "") => new()
     {
         Url = url,
         Title = title,
         Site = SiteType.XVideos,
+        Duration = duration,
         Qualities = { new QualityOption("720p", QualityKey) },
         StreamUrls = { [QualityKey] = "https://cdn.test/v.m3u8" }
     };

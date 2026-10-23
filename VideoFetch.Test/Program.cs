@@ -51,6 +51,7 @@ var downloadOk = await DownloadQueueTests.RunAsync();
 var engineOk = DownloadEngineTests.Run();
 var searchOk = SearchParsingTests.Run();
 var durationOk = DurationSortTests.Run();
+var recordOk = DownloadRecordTests.Run();
 var qualityOk = QualityTests.Run();
 var logOk = AppLogTests.Run();
 var cookieOk = SiteCookiesTests.Run();
@@ -61,7 +62,7 @@ var uiOk = UiSmokeTest.Run();
 if (!live && !catsOnly)
 {
     Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
-    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && durationOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && durationOk && recordOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk ? 0 : 1;
     return;
 }
 
@@ -69,7 +70,7 @@ var liveCategoriesOk = await CategoryLiveTests.RunAsync();
 
 if (catsOnly)
 {
-    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && durationOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk && liveCategoriesOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && durationOk && recordOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk && liveCategoriesOk ? 0 : 1;
     return;
 }
 
