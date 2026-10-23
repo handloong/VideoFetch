@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VideoFetch.Models;
@@ -61,6 +62,12 @@ internal static class UiSmokeTest
         {
             Source = new Uri("pack://application:,,,/VideoFetch;component/Strings/Strings.zh-CN.xaml")
         });
+
+        // 队列会把未完成任务写进 queue.json。测试里加的都是假任务，
+        // 一旦写进真实目录，下次启动就会去下载 example.test —— 全程指向临时目录。
+        var pendingDir = Path.Combine(Path.GetTempPath(), "vf-ui-pending-" + Guid.NewGuid().ToString("N")[..8]);
+        var originalPendingDir = PendingQueueStore.Directory;
+        PendingQueueStore.Directory = pendingDir;
 
         var vm = new MainViewModel();
         for (var i = 1; i <= FakeCategoryCount; i++)
@@ -142,6 +149,10 @@ internal static class UiSmokeTest
 
         // 10) 设置页的 Cookie 导入
         ok &= CheckCookieSettings(vm);
+
+        // 收尾：队列的待续清单目录还原，临时目录删掉
+        PendingQueueStore.Directory = originalPendingDir;
+        try { if (Directory.Exists(pendingDir)) Directory.Delete(pendingDir, true); } catch { }
 
         return ok;
     }
@@ -763,9 +774,22 @@ internal static class UiSmokeTest
             columns.Contains(Btn("Queue_Header_Size")), string.Join(" | ", columns));
 
         // 标题一长就被截断，所以列宽必须能拖、横向必须能滚
-        var grip = FindDescendant<GridViewColumnHeader>(tab, _ => true);
+        // 注意：表头行末尾还有一个"填充表头"（Column 为 null），别选中它
+        var grip = FindDescendant<GridViewColumnHeader>(tab, h => h.Column != null);
         ok &= Check("ui-smoke: 表头有拖拽把手（列宽可调）",
             grip?.Template?.FindName("PART_HeaderGrip", grip) != null);
+        // 真的模拟一次拖拽：旧模板只有光标变化、列宽不动，这条断言能抓住
+        if (grip != null && queueList?.View is GridView gv && gv.Columns.Count > 0)
+        {
+            var thumb = (Thumb?)grip.Template.FindName("PART_HeaderGrip", grip);
+            var column = grip.Column!;
+            var before = column.Width;
+            thumb?.RaiseEvent(new DragDeltaEventArgs(40, 0) { RoutedEvent = Thumb.DragDeltaEvent });
+            ok &= Check("ui-smoke: 拖拽把手真的改变列宽",
+                Math.Abs(column.Width - (before + 40)) < 0.5,
+                $"{before} -> {column.Width}");
+            column.Width = before;
+        }
         ok &= Check("ui-smoke: 队列列表允许横向滚动",
             ScrollViewer.GetHorizontalScrollBarVisibility(list) == ScrollBarVisibility.Auto,
             ScrollViewer.GetHorizontalScrollBarVisibility(list).ToString());
@@ -818,6 +842,7 @@ internal static class UiSmokeTest
         vm.QueueFilter = QueueFilter.All;
         return ok;
     }
+
 
     /// <summary>
     /// 离屏渲染一个控件。

@@ -25,6 +25,7 @@ public class DownloadQueueService
     private readonly Func<IDownloadRunner> _runnerFactory;
     private readonly IUiDispatcher _ui;
     private readonly SemaphoreSlim _concurrencySemaphore;
+    private readonly PendingQueueStore _pendingStore;
     private int _currentMaxConcurrent;
 
     public ObservableCollection<DownloadItem> Items { get; } = new();
@@ -45,13 +46,15 @@ public class DownloadQueueService
         DownloadRecordService recordService,
         IVideoInfoProvider infoProvider,
         Func<IDownloadRunner> runnerFactory,
-        IUiDispatcher ui)
+        IUiDispatcher ui,
+        PendingQueueStore? pendingStore = null)
     {
         _settings = settings;
         _recordService = recordService;
         _infoProvider = infoProvider;
         _runnerFactory = runnerFactory;
         _ui = ui;
+        _pendingStore = pendingStore ?? new PendingQueueStore();
         _currentMaxConcurrent = ClampConcurrency(settings.MaxConcurrentDownloads);
         // 上限必须给足：ApplySettings 会在运行中把并发数调高，用 Release 补额度。
         // 上限若等于初始值，Release 会抛 "Adding the specified count to the
@@ -60,6 +63,9 @@ public class DownloadQueueService
 
         // 启动时加载历史下载记录
         LoadHistory();
+
+        // 再把上次没下完的任务捞回来继续下
+        RestorePending();
     }
 
     /// <summary>
@@ -111,6 +117,64 @@ public class DownloadQueueService
         }
     }
 
+    /// <summary>把当前未完成的任务写进清单（很小的一份 JSON，直接同步写）。</summary>
+    private void SavePending() => _pendingStore.Save(Items);
+
+    /// <summary>
+    /// 把上次退出时没完成的任务放回队列。
+    ///
+    /// 上次还在排队/下载中的 → 立刻重新开跑（从头下，不做断点续传）；
+    /// 上次已经失败/取消的 → 只恢复成原来的样子，等用户点重试，
+    /// 否则每次开机都会去撞同一个坏链接。
+    /// </summary>
+    private void RestorePending()
+    {
+        var tasks = _pendingStore.Load();
+        if (tasks.Count == 0) return;
+
+        var restored = 0;
+        foreach (var task in tasks)
+        {
+            if (string.IsNullOrWhiteSpace(task.Url)) continue;
+            if (Items.Any(i => string.Equals(i.Url, task.Url, StringComparison.OrdinalIgnoreCase)))
+                continue;   // 已经在列表里（历史记录或本次已入队）
+
+            var item = new DownloadItem
+            {
+                Url = task.Url,
+                Title = task.Title,
+                Site = task.Site,
+                Quality = task.Quality,
+                OutputPath = task.OutputPath,
+                Duration = task.Duration,
+                AddedAt = task.AddedAt,
+                State = task.State
+            };
+
+            if (task.WasActive)
+            {
+                // 上次的残缺文件必须删掉：.ts 直接拼接，残留会让结果坏掉
+                try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
+
+                item.Progress = 0;
+                item.State = DownloadState.Queued;
+                item.IsActive = true;
+                Items.Add(item);
+                _ = RunQueuedAsync(item, knownInfo: null);
+            }
+            else
+            {
+                item.HasFailed = task.State == DownloadState.Failed;
+                item.IsCancelled = task.State == DownloadState.Cancelled;
+                Items.Add(item);
+            }
+            restored++;
+        }
+
+        if (restored > 0)
+            AppLog.Info($"恢复了 {restored} 个未完成的任务");
+    }
+
     // ══════════════════════════════════════════════════════════
     //  ENQUEUE
     // ══════════════════════════════════════════════════════════
@@ -154,6 +218,7 @@ public class DownloadQueueService
         };
 
         _ui.Invoke(() => Items.Add(item));
+        SavePending();                  // 记下来：程序被关掉也能接着下
         _ = RunQueuedAsync(item, info);
         return true;
     }
@@ -188,6 +253,7 @@ public class DownloadQueueService
         item.Speed = string.Empty;
         item.State = DownloadState.Queued;
         item.IsActive = true;
+        SavePending();
 
         _ = RunQueuedAsync(item, knownInfo: null);
         return true;
@@ -262,6 +328,7 @@ public class DownloadQueueService
             item.HasFailed = false;
             item.IsCancelled = false;
             item.IsDownloading = false;
+            SavePending();      // 完成了，从待续清单里移除
 
             // 下载完成后记录到SQLite（仅在文件保存成功后）
             try
@@ -306,7 +373,7 @@ public class DownloadQueueService
         }
     }
 
-    private static void MarkCancelled(DownloadItem item)
+    private void MarkCancelled(DownloadItem item)
     {
         item.Speed = string.Empty;
         item.State = DownloadState.Cancelled;
@@ -314,9 +381,10 @@ public class DownloadQueueService
         item.HasFailed = false;
         item.IsActive = false;
         item.IsDownloading = false;
+        SavePending();      // 取消的也留着，重启后还能看到并重试
     }
 
-    private static void MarkFailed(DownloadItem item, Exception ex)
+    private void MarkFailed(DownloadItem item, Exception ex)
     {
         item.Speed = string.Empty;
         item.State = DownloadState.Failed;
@@ -325,6 +393,7 @@ public class DownloadQueueService
         item.IsCancelled = false;
         item.IsActive = false;
         item.IsDownloading = false;
+        SavePending();
     }
 
     private static void DeletePartialFile(DownloadItem item)
@@ -405,6 +474,7 @@ public class DownloadQueueService
         item.IsDeleted = true;
         item.Note = string.Empty;
         item.State = DownloadState.Deleted;
+        SavePending();      // 进回收站的不该在下次启动时冒出来
         return true;
     }
 
@@ -433,6 +503,7 @@ public class DownloadQueueService
         item.Note = string.Empty;
         item.State = item.StateBeforeTrash ?? DeriveState(item);
         item.StateBeforeTrash = null;
+        SavePending();
         return true;
     }
 
@@ -473,6 +544,8 @@ public class DownloadQueueService
         {
             foreach (var item in items) Items.Remove(item);
         });
+
+        SavePending();
     }
 
     // ══════════════════════════════════════════════════════════

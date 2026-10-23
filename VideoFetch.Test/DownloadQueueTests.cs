@@ -36,6 +36,8 @@ internal static class DownloadQueueTests
         await Safe("concurrency", ConcurrencyLimitAsync);
         await Safe("concurrency-raise", RaiseConcurrencyAsync);
         await Safe("file-size", FileSizeAsync);
+        await Safe("pending", PendingAsync);
+        await Safe("resume", ResumeAfterRestartAsync);
         await Safe("failure", FailureIsRecordedAsync);
         await Safe("cancel-failed", CancelOnFailedIsRefusedAsync);
         await Safe("delete-failed", DeleteFailedTaskAsync);
@@ -221,6 +223,95 @@ internal static class DownloadQueueTests
 
         gate.ReleaseAll();
         await WaitUntilAsync(() => h.Queue.Items.All(i => !i.IsActive), 15000);
+    }
+
+    /// <summary>
+    /// 未完成任务要落盘：排队/下载中的重启后接着下；失败/取消的只恢复不重跑；
+    /// 完成的和进回收站的必须从清单里消失。
+    /// </summary>
+    private static async Task PendingAsync()
+    {
+        using var h = new Harness(maxConcurrent: 1);
+        var gate = h.HoldRunner();
+        var store = new PendingQueueStore();
+
+        h.Queue.Enqueue(Info("https://site.test/v/p1", "下载中"), QualityKey);
+        await WaitUntilAsync(() => h.Queue.Items.Count(i => i.IsDownloading) == 1);
+        h.Queue.Enqueue(Info("https://site.test/v/p2", "还在排队"), QualityKey);
+
+        var saved = store.Load();
+        Check("pending: 未完成任务写进清单", saved.Count == 2, saved.Count.ToString());
+        Check("pending: 记下了活跃标记", saved.Count == 2 && saved.All(t => t.WasActive));
+        Check("pending: 记下了输出路径与标题",
+            saved.All(t => t.OutputPath.Length > 0 && t.Title.Length > 0));
+
+        gate.ReleaseAll();
+        await WaitUntilAsync(() => h.Queue.Items.All(i => !i.IsActive), 15000);
+        Check("pending: 完成后从清单移除", store.Load().Count == 0, store.Load().Count.ToString());
+
+        // 清单被写坏（断电/手改）时不能让程序起不来
+        File.WriteAllText(Path.Combine(h.PendingDir, "queue.json"), "{ 这不是合法 JSON");
+        var broken = new PendingQueueStore();
+        var brokenResult = -1;
+        try { brokenResult = broken.Load().Count; } catch { brokenResult = -2; }
+        Check("pending: 清单损坏时返回空列表而不是抛异常", brokenResult == 0, brokenResult.ToString());
+
+        // 失败的任务留在清单里，但标记为非活跃（重启后不会自动去撞同一个坏链接）
+        using var h2 = new Harness();
+        h2.Runner.Handler = (_, _, _) => throw new InvalidOperationException("network down");
+        var failed = await h2.EnqueueAndWaitAsync(Info("https://site.test/v/p3", "会失败"));
+        Check("pending: 失败任务仍写进清单", failed.HasFailed && new PendingQueueStore().Load().Count == 1);
+
+        h2.Queue.DeleteToTrash(failed);
+        Check("pending: 进回收站后从清单移除", new PendingQueueStore().Load().Count == 0,
+            new PendingQueueStore().Load().Count.ToString());
+    }
+
+    /// <summary>
+    /// 模拟"下到一半被关掉，再打开"：同一份清单、同一个库，新建一个队列服务。
+    /// 上次在下载中的任务应该自己接着下完。
+    /// </summary>
+    private static async Task ResumeAfterRestartAsync()
+    {
+        // 不用 using：重启后的服务还要用它的目录和数据库
+        var h1 = new Harness(maxConcurrent: 2);
+        try
+        {
+            var gate = h1.HoldRunner();
+            h1.Queue.Enqueue(Info("https://site.test/v/r1", "被中断的任务A"), QualityKey);
+            h1.Queue.Enqueue(Info("https://site.test/v/r2", "被中断的任务B"), QualityKey);
+            await WaitUntilAsync(() => h1.Queue.Items.Count(i => i.IsDownloading) >= 1);
+
+            // 造一个残缺文件：重启后必须先删掉，否则拼出来的文件是坏的
+            var first = h1.Queue.Items.First();
+            Directory.CreateDirectory(Path.GetDirectoryName(first.OutputPath)!);
+            await File.WriteAllTextAsync(first.OutputPath, "半截数据");
+
+            // 闸门不放开 —— 这就是"程序被杀时任务还在下载中"的那一刻
+            var store = new PendingQueueStore();
+            Check("resume: 中断前清单里有两条", store.Load().Count == 2, store.Load().Count.ToString());
+
+            // —— 重启 ——（同一个清单目录、同一个库；新 runner 正常跑完）
+            var provider = new FakeProvider();
+            var runner = new FakeRunner();
+            var queue = new DownloadQueueService(
+                h1.Settings, h1.Records, provider, () => runner, new ImmediateDispatcher());
+
+            Check("resume: 重启后任务回来了", queue.Items.Count == 2, queue.Items.Count.ToString());
+            Check("resume: 回来就自动继续下",
+                queue.Items.All(i => i.IsActive || i.IsCompleted),
+                string.Join(",", queue.Items.Select(i => $"{i.Title}={i.State}")));
+
+            await WaitUntilAsync(() => queue.Items.All(i => !i.IsActive), 15000);
+            Check("resume: 续下的任务都完成了", queue.Items.All(i => i.IsCompleted),
+                string.Join(",", queue.Items.Select(i => $"{i.Title}={i.State}")));
+            Check("resume: 残file 被清掉重新下载", runner.Calls.Count == 2, runner.Calls.Count.ToString());
+            Check("resume: 重启后清单被清干净", store.Load().Count == 0, store.Load().Count.ToString());
+        }
+        finally
+        {
+            h1.Dispose();   // 这时候才删临时目录（h1 的任务还卡在闸门上）
+        }
     }
 
     /// <summary>文件大小：永远用最大单位（1.2G / 12.3M），未知用占位符。</summary>
@@ -763,6 +854,7 @@ internal static class DownloadQueueTests
         public readonly FakeProvider Provider = new();
         public readonly FakeRunner Runner = new();
         public readonly DownloadQueueService Queue;
+        public readonly string PendingDir;
 
         public Harness(int maxConcurrent = 2)
         {
@@ -777,6 +869,11 @@ internal static class DownloadQueueTests
                 AutoOpenFolder = false
             };
             Records = new DownloadRecordService(Path.Combine(Root, "test.db"));
+
+            // 待续清单也放临时目录；静态目录是全局的，但用例是串行跑的，
+            // 每个 Harness 构造时重置一次就够（"重启"用例要的就是同一目录）
+            PendingDir = Path.Combine(Root, "pending");
+            PendingQueueStore.Directory = PendingDir;
             Queue = new DownloadQueueService(Settings, Records, Provider, () => Runner, new ImmediateDispatcher());
         }
 
