@@ -154,18 +154,7 @@ try {
             exit 1
         }
 
-        # 提交信息必须走 UTF-8 文件：PS 5.1 会把命令行参数按 ANSI 代码页
-        # 传给原生程序，直接 -m "中文" 会让 git 存进 GBK 字节，GitHub 上全是乱码。
-        $msgFile = Join-Path ([System.IO.Path]::GetTempPath()) "videofetch-release-msg.txt"
-        [System.IO.File]::WriteAllText($msgFile,
-            "chore(release): 版本号 -> $tag`n",
-            (New-Object System.Text.UTF8Encoding($false)))
-        try {
-            $commit = Invoke-Git commit -q -F $msgFile
-        } finally {
-            Remove-Item $msgFile -Force -ErrorAction SilentlyContinue
-        }
-
+        $commit = Invoke-Git commit -q -m "chore(release): 版本号 -> $tag"
         foreach ($l in $commit.Lines) { Write-Host $l }
         if ($commit.Code -ne 0) {
             Write-Host '[错误] 提交版本号变更失败'
