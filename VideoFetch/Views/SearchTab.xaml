@@ -109,6 +109,15 @@
                             Style="{StaticResource PrimaryButtonStyle}"
                             FontSize="10" Padding="10,2" Margin="8,0,6,0"
                             Content="{Binding BatchDownloadText}"/>
+                    <Button Command="{Binding CancelBatchDownloadCommand}"
+                            Content="{DynamicResource Btn_CancelBatch}"
+                            Style="{StaticResource DangerButtonStyle}"
+                            FontSize="10" Padding="8,2" Margin="0,0,6,0"
+                            Visibility="{Binding IsBatchDownloading, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="{Binding BatchProgressText}" FontSize="10"
+                               Foreground="{StaticResource AccentBrush}"
+                               VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding BatchProgressText, Converter={StaticResource NotNullOrEmpty}}"/>
                     <TextBlock Text="{DynamicResource Hint_DoubleClick}" FontSize="10"
                                Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="6,0,0,0"

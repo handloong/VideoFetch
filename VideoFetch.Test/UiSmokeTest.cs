@@ -128,8 +128,51 @@ internal static class UiSmokeTest
         // 7) 时长筛选下拉框（仅 91pinse）
         ok &= CheckDurationFilter(vm);
 
-        // 8) 弹层主题（右键菜单 / ToolTip 都是独立视觉树，不继承主题）
+        // 8) 批量下载的进度与取消（批量期间界面上必须有反馈）
+        ok &= CheckBatchUi(vm);
+
+        // 9) 弹层主题（右键菜单 / ToolTip 都是独立视觉树，不继承主题）
         ok &= CheckPopupThemes();
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 批量下载逐条抓页面要几十秒，界面必须给出进度、也能中途取消。
+    /// 这里验证进度文字和取消按钮确实随 IsBatchDownloading 显示/隐藏。
+    /// </summary>
+    private static bool CheckBatchUi(MainViewModel vm)
+    {
+        var tab = new SearchTab { DataContext = vm };
+        tab.Measure(new Size(TabWidth, TabHeight));
+        tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        tab.UpdateLayout();
+
+        string Str(string key) => Application.Current.TryFindResource(key) as string ?? $"[{key}]";
+
+        var cancelBtn = FindDescendant<Button>(tab, b => (b.Content as string) == Str("Btn_CancelBatch"));
+        var progress = FindDescendant<TextBlock>(tab, t => ReferenceEquals(t.DataContext, vm)
+                                                        && t.GetBindingExpression(TextBlock.TextProperty)?.ParentBinding.Path.Path
+                                                           == nameof(MainViewModel.BatchProgressText));
+
+        var ok = Check("ui-smoke: 批量取消按钮存在", cancelBtn != null);
+        ok &= Check("ui-smoke: 批量进度文字存在", progress != null);
+        if (cancelBtn == null || progress == null) return false;
+
+        ok &= Check("ui-smoke: 空闲时不显示取消按钮", !IsEffectivelyVisible(cancelBtn));
+        ok &= Check("ui-smoke: 空闲时不显示进度文字", !IsEffectivelyVisible(progress));
+
+        vm.IsBatchDownloading = true;
+        vm.BatchProgressText = "正在准备 3/20：某个视频";
+        tab.UpdateLayout();
+        ok &= Check("ui-smoke: 批量中显示取消按钮", IsEffectivelyVisible(cancelBtn));
+        ok &= Check("ui-smoke: 批量中显示进度文字", IsEffectivelyVisible(progress));
+
+        vm.IsBatchDownloading = false;
+        vm.BatchProgressText = string.Empty;
+        tab.UpdateLayout();
+        ok &= Check("ui-smoke: 结束后恢复隐藏",
+            !IsEffectivelyVisible(cancelBtn) && !IsEffectivelyVisible(progress));
 
         return ok;
     }
@@ -378,24 +421,25 @@ internal static class UiSmokeTest
         var running = new DownloadItem
         {
             Title = "下载中的任务", Url = "https://example.test/v/active",
-            Status = "Downloading", IsActive = true, IsDownloading = true, Progress = 42, Speed = "1.2 MB/s"
+            State = DownloadState.Downloading, IsActive = true, IsDownloading = true, Progress = 42, Speed = "1.2 MB/s"
         };
         var failed = new DownloadItem
         {
             Title = "hot stepdaughter took dick in her a...",
             Url = "https://example.test/v/failed",
-            Status = "Failed: Response status code does not indicate success: 410 (Gone).",
+            State = DownloadState.Failed,
+            LastError = "Response status code does not indicate success: 410 (Gone).",
             HasFailed = true, Progress = 8
         };
         var cancelled = new DownloadItem
         {
             Title = "被取消的任务", Url = "https://example.test/v/cancelled",
-            Status = "Cancelled", IsCancelled = true
+            State = DownloadState.Cancelled, IsCancelled = true
         };
         var completed = new DownloadItem
         {
             Title = "已完成的任务", Url = "https://example.test/v/done",
-            Status = "Completed", IsCompleted = true, Progress = 100,
+            State = DownloadState.Completed, IsCompleted = true, Progress = 100,
             OutputPath = Path.Combine(Path.GetTempPath(), "vf-ui-smoke-done.mp4")
         };
 
@@ -412,6 +456,15 @@ internal static class UiSmokeTest
         if (list == null) return false;
 
         string Btn(string key) => Application.Current.TryFindResource(key) as string ?? $"[{key}]";
+
+        // 状态文案必须本地化（以前中文界面里直接显示 Downloading / Failed: ...）
+        Console.WriteLine($"  info  失败行状态: \"{failed.Status}\"");
+        ok &= Check("ui-smoke: 状态文案已本地化（下载中）",
+            running.Status == Btn("State_Downloading"), running.Status);
+        ok &= Check("ui-smoke: 失败状态带本地化前缀和原因",
+            failed.Status == $"{Btn("State_Failed")}: {failed.LastError}", failed.Status);
+        ok &= Check("ui-smoke: 已完成文案已本地化",
+            completed.Status == Btn("State_Completed"), completed.Status);
 
         var runningButtons = VisibleButtons(list, running);
         var failedButtons = VisibleButtons(list, failed);
@@ -535,10 +588,12 @@ internal static class UiSmokeTest
         return null;
     }
 
-    private static bool Check(string name, bool condition)
+    private static bool Check(string name, bool condition, string? actual = null)
     {
         // Reuse CategoryTests' counter style: pass/fail printed individually.
-        Console.WriteLine(condition ? $"  PASS  {name}" : $"  FAIL  {name}");
+        Console.WriteLine(condition
+            ? $"  PASS  {name}"
+            : $"  FAIL  {name}" + (actual is null ? "" : $"  (实际: {actual})"));
         if (!condition) _failed++;
         return condition;
     }

@@ -25,6 +25,21 @@ public enum QueueFilter
 }
 
 /// <summary>
+/// 下载任务的机器状态。界面文案按这个枚举本地化，取色也只看它 ——
+/// 不要再用字符串比较（以前靠 StartsWith("Failed") 判断）。
+/// </summary>
+public enum DownloadState
+{
+    Queued,
+    Downloading,
+    Completed,
+    Failed,
+    Cancelled,
+    Deleted,
+    FileMissing
+}
+
+/// <summary>
 /// 按时长筛选视频（对应 91pinse 的 ?dur= 参数）。
 /// 只有声明了 <c>SupportsDurationFilter</c> 的站点会真正使用它。
 /// </summary>
@@ -79,7 +94,6 @@ public class VideoInfo
 public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
 {
     private double _progress;
-    private string _status = "Waiting";
     private string _speed = string.Empty;
     private bool _isCompleted;
     private bool _hasFailed;
@@ -87,6 +101,9 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     private bool _isDeleted;
     private bool _isFileMissing;
     private bool _isCancelled;
+    private DownloadState _state = DownloadState.Queued;
+    private string _lastError = string.Empty;
+    private string _note = string.Empty;
 
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Title { get; set; } = string.Empty;
@@ -168,7 +185,7 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public bool CanRestore => IsDeleted && !(IsCompleted && IsFileMissing);
 
     /// <summary>进回收站前的状态，恢复时用来还原（例如失败原因）。</summary>
-    public string StatusBeforeTrash { get; set; } = string.Empty;
+    public DownloadState? StateBeforeTrash { get; set; }
 
     /// <summary>
     /// 状态位变化后刷新所有由状态推导出来的属性。逐个通知太多容易漏，
@@ -190,11 +207,79 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
         set { _progress = value; OnPropertyChanged(nameof(Progress)); }
     }
 
+    /// <summary>
+    /// 机器状态：逻辑判断与取色都看它。
+    /// </summary>
+    public DownloadState State
+    {
+        get => _state;
+        set
+        {
+            if (_state == value) return;
+            _state = value;
+            OnPropertyChanged(nameof(State));
+            OnPropertyChanged(nameof(Status));
+        }
+    }
+
+    /// <summary>失败原因（仅 <see cref="DownloadState.Failed"/> 时有意义）。</summary>
+    public string LastError
+    {
+        get => _lastError;
+        set
+        {
+            _lastError = value ?? string.Empty;
+            OnPropertyChanged(nameof(LastError));
+            OnPropertyChanged(nameof(Status));
+        }
+    }
+
+    /// <summary>
+    /// 临时展示文案，覆盖状态文本（例如"删除失败: 文件被占用"）。
+    /// 只影响显示，不参与任何逻辑判断。
+    /// </summary>
+    public string Note
+    {
+        get => _note;
+        set
+        {
+            _note = value ?? string.Empty;
+            OnPropertyChanged(nameof(Note));
+            OnPropertyChanged(nameof(Status));
+        }
+    }
+
+    /// <summary>
+    /// 界面上显示的状态文本：本地化的状态名（失败时带上原因）。
+    /// 中英文切换后重新求值即可，不需要谁去改字符串。
+    /// </summary>
     public string Status
     {
-        get => _status;
-        set { _status = value; OnPropertyChanged(nameof(Status)); }
+        get
+        {
+            if (_note.Length > 0) return _note;
+
+            var text = Services.LanguageService.GetString(StateResourceKey(_state));
+            return _state == DownloadState.Failed && _lastError.Length > 0
+                ? $"{text}: {_lastError}"
+                : text;
+        }
     }
+
+    private static string StateResourceKey(DownloadState state) => state switch
+    {
+        DownloadState.Queued => "State_Queued",
+        DownloadState.Downloading => "State_Downloading",
+        DownloadState.Completed => "State_Completed",
+        DownloadState.Failed => "State_Failed",
+        DownloadState.Cancelled => "State_Cancelled",
+        DownloadState.Deleted => "State_Deleted",
+        DownloadState.FileMissing => "State_FileMissing",
+        _ => "State_Queued"
+    };
+
+    /// <summary>状态变化时让界面重新求值一次状态文本（语言切换后也一样）。</summary>
+    public void RefreshStatusText() => OnPropertyChanged(nameof(Status));
 
     public string Speed
     {

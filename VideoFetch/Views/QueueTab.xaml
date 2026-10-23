@@ -6,7 +6,7 @@
     <UserControl.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <conv:BoolToVisibilityConverter x:Key="InvertBoolToVis" Invert="True"/>
-        <conv:StatusToColorConverter x:Key="StatusToColor"/>
+        <conv:StateToColorConverter x:Key="StateToColor"/>
         <conv:EnumEqualsConverter x:Key="EnumEquals"/>
         <conv:IntGreaterThanZeroConverter x:Key="IntGtZero"/>
 
@@ -118,7 +118,7 @@
                                         <TextBlock Text="{Binding Status}" FontSize="11"
                                                    TextTrimming="CharacterEllipsis"
                                                    ToolTip="{Binding Status}"
-                                                   Foreground="{Binding Status, Converter={StaticResource StatusToColor}}"
+                                                   Foreground="{Binding State, Converter={StaticResource StateToColor}}"
                                                    Padding="6,2"/>
                                         <TextBlock Text="{Binding Speed}" FontSize="10"
                                                    Foreground="{StaticResource TextSecondaryBrush}" Padding="6,0"/>

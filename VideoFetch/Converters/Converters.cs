@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows.Data;
+using VideoFetch.Models;
 
 namespace VideoFetch.Converters;
 
@@ -26,8 +27,22 @@ public class ProgressToWidthConverter : IMultiValueConverter
 /// </summary>
 public class NotNullOrEmptyConverter : IValueConverter
 {
+    /// <summary>
+    /// 非空 → true；绑定目标是 Visibility 时直接给 Visible/Collapsed。
+    ///
+    /// 之前一律返回 bool，而所有调用点都是绑在 Visibility 上：bool 到 Visibility
+    /// 没有默认转换，绑定静默失败、Visibility 保持默认的 Visible —— 于是"没有状态
+    /// 消息"的 TextBlock 也一直占着布局位置。
+    /// </summary>
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => value is string s ? !string.IsNullOrEmpty(s) : value != null;
+    {
+        var hasValue = value is string s ? !string.IsNullOrEmpty(s) : value != null;
+
+        if (targetType == typeof(System.Windows.Visibility))
+            return hasValue ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+        return hasValue;
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
@@ -92,28 +107,39 @@ public class EnumEqualsConverter : IValueConverter
 }
 
 /// <summary>
-/// Returns a solid color brush based on a DownloadItem status string
+/// 按 <see cref="DownloadState"/> 给队列的状态文字上色。
+///
+/// 以前是拿字符串比对（还要 StartsWith("Failed") 兜住 "Failed: xxx"），
+/// 中文界面里根本匹配不上；现在只认枚举。
 /// </summary>
-public class StatusToColorConverter : IValueConverter
+public class StateToColorConverter : IValueConverter
 {
+    private static readonly System.Windows.Media.SolidColorBrush Success = Frozen(0x4C, 0xAF, 0x50);
+    private static readonly System.Windows.Media.SolidColorBrush Danger = Frozen(0xF4, 0x43, 0x36);
+    private static readonly System.Windows.Media.SolidColorBrush Accent = Frozen(0x7C, 0x6F, 0xF7);
+    private static readonly System.Windows.Media.SolidColorBrush Muted = Frozen(0x99, 0x99, 0xAA);
+    private static readonly System.Windows.Media.SolidColorBrush Warning = Frozen(0xFF, 0x98, 0x00);
+
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        var status = value?.ToString() ?? "";
-        return status switch
+        => value switch
         {
-            "Completed" or "已完成" => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x4C, 0xAF, 0x50)),
-            var s when s.StartsWith("Failed") => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0xF4, 0x43, 0x36)),
-            "Downloading" => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x7C, 0x6F, 0xF7)),
-            "Queued" => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x99, 0x99, 0xAA)),
-            "Cancelled" or "Cancelling..." or "已删除" or "Deleted" => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0x99, 0x99, 0xAA)),
-            _ => new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(0xFF, 0x98, 0x00))
+            DownloadState.Completed => Success,
+            DownloadState.Failed => Danger,
+            DownloadState.Downloading => Accent,
+            DownloadState.Queued => Muted,
+            DownloadState.Cancelled => Muted,
+            DownloadState.Deleted => Muted,
+            DownloadState.FileMissing => Muted,
+            _ => Warning
         };
+
+    /// <summary>画刷冻结后可以跨线程共享，也免掉每次刷新都 new 一个。</summary>
+    private static System.Windows.Media.SolidColorBrush Frozen(byte r, byte g, byte b)
+    {
+        var brush = new System.Windows.Media.SolidColorBrush(
+            System.Windows.Media.Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

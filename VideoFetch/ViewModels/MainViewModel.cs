@@ -443,15 +443,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>同步刷新搜索/分类结果上的"已下载"标记（记录变动后调用）。</summary>
     private void RefreshSearchMarks()
     {
-        foreach (var list in new[] { SearchResults, CategoryResults })
-        {
-            foreach (var r in list)
-            {
-                var record = _recordService.GetByUrl(r.Url);
-                r.IsAlreadyDownloaded = record != null && record.FileExists;
-                r.LocalFilePath = record?.FilePath ?? string.Empty;
-            }
-        }
+        // 两个列表合起来只查一次库
+        MarkDownloaded(SearchResults.Concat(CategoryResults));
     }
 
     /// <summary>
@@ -538,16 +531,39 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task PrepareResultsAsync(List<SearchResult> results, ObservableCollection<SearchResult> target)
     {
+        MarkDownloaded(results);
+
         foreach (var r in results)
-        {
-            var record = _recordService.GetByUrl(r.Url);
-            r.IsAlreadyDownloaded = record != null && record.FileExists;
-            r.LocalFilePath = record?.FilePath ?? string.Empty;
             target.Add(r);
-        }
 
         if (results.Count > 0)
             _ = LoadThumbnailsAsync(results);
+    }
+
+    /// <summary>
+    /// 给结果打上"已下载"标记。
+    ///
+    /// 一次把全部记录读出来做字典，而不是每条结果查一次库：翻一页 20 条就是
+    /// 20 次建连接 + 20 次查询，而这些都在 UI 线程上，切分类时会明显卡。
+    /// </summary>
+    private void MarkDownloaded(IEnumerable<SearchResult> results)
+    {
+        var records = _recordService.GetAllRecords()
+            .ToDictionary(r => r.Url, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var r in results)
+        {
+            if (records.TryGetValue(r.Url, out var record))
+            {
+                r.IsAlreadyDownloaded = record.FileExists;
+                r.LocalFilePath = record.FilePath;
+            }
+            else
+            {
+                r.IsAlreadyDownloaded = false;
+                r.LocalFilePath = string.Empty;
+            }
+        }
     }
 
     /// <summary>
@@ -793,7 +809,7 @@ public partial class MainViewModel : ObservableObject
             if (!System.IO.File.Exists(item.OutputPath))
             {
                 _recordService.DeleteRecord(item.Url);
-                item.Status = "文件已不存在";
+                item.State = DownloadState.FileMissing;
                 item.IsCompleted = false;
                 item.IsFileMissing = true;
                 return;
@@ -827,7 +843,7 @@ public partial class MainViewModel : ObservableObject
                                 fs.SetLength(0);
                             try { PInvoke.MoveFileEx(tempName, null, 4); } catch { }
                         }
-                        item.Status = "文件将在重启后删除";
+                        item.Note = "文件将在重启后删除";
                         _recordService.DeleteRecord(item.Url);
                         item.IsCompleted = false;
                         item.IsFileMissing = true;
@@ -838,13 +854,13 @@ public partial class MainViewModel : ObservableObject
 
             // 成功删除
             _recordService.DeleteRecord(item.Url);
-            item.Status = "本地文件已删除";
+            item.Note = "本地文件已删除";
             item.IsCompleted = false;
             item.IsFileMissing = true;
         }
         catch (Exception ex)
         {
-            item.Status = $"删除失败: {ex.Message}";
+            item.Note = $"删除失败: {ex.Message}";
         }
     }
 
@@ -1053,11 +1069,25 @@ public partial class MainViewModel : ObservableObject
     /// Download all selected search results (auto-select best quality for each).
     /// Skips already-downloaded videos by default (similar to Xunlei's dedup logic).
     /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BatchDownloadCommand), nameof(BatchDownloadCategoryCommand))]
+    private bool _isBatchDownloading;
+
+    /// <summary>批量下载进度文案（"正在准备 3/20：标题"）。</summary>
+    [ObservableProperty]
+    private string _batchProgressText = string.Empty;
+
+    private CancellationTokenSource? _batchCts;
+
+    /// <summary>取消正在进行的批量下载（逐条抓页面期间随时可按）。</summary>
+    [RelayCommand]
+    private void CancelBatchDownload() => _batchCts?.Cancel();
+
     [RelayCommand(CanExecute = nameof(CanBatchDownload))]
     private Task BatchDownloadAsync()
         => BatchDownloadCoreAsync(SearchResults, m => SearchStatusMessage = m);
 
-    private bool CanBatchDownload() => SelectedResultCount > 0 && !IsSearching;
+    private bool CanBatchDownload() => SelectedResultCount > 0 && !IsSearching && !IsBatchDownloading;
 
     /// <summary>
     /// Download all selected results (auto-select best quality for each).
@@ -1111,30 +1141,88 @@ public partial class MainViewModel : ObservableObject
 
         int successCount = 0;
         int failCount = 0;
+        var firstError = string.Empty;
 
-        foreach (var result in toDownload)
+        // 逐条抓页面可能要几十秒，界面必须能看到进度、也能中途取消
+        IsBatchDownloading = true;
+        _batchCts = new CancellationTokenSource();
+        var token = _batchCts.Token;
+
+        try
         {
-            try
+            for (var i = 0; i < toDownload.Count; i++)
             {
-                if (!_infoService.IsSupported(result.Url)) { failCount++; continue; }
+                token.ThrowIfCancellationRequested();
 
-                var info = await _infoService.FetchAsync(result.Url);
-                if (info.Qualities.Count == 0) { failCount++; continue; }
+                var result = toDownload[i];
+                BatchProgressText = string.Format(
+                    LanguageService.GetString("Batch_Progress"),
+                    i + 1, toDownload.Count, Shorten(result.Title, 30));
 
-                var bestQuality = info.Qualities[0];
-                _queue.Enqueue(info, bestQuality.Value);
-                successCount++;
+                try
+                {
+                    if (!_infoService.IsSupported(result.Url))
+                    {
+                        failCount++;
+                        if (firstError.Length == 0) firstError = "不支持的链接";
+                        continue;
+                    }
+
+                    var info = await _infoService.FetchAsync(result.Url);
+                    if (info.Qualities.Count == 0)
+                    {
+                        failCount++;
+                        if (firstError.Length == 0) firstError = "没有可用画质";
+                        continue;
+                    }
+
+                    _queue.Enqueue(info, info.Qualities[0].Value);
+                    successCount++;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // 以前这里是 catch { failCount++ }，用户只看到"失败 3 个"，
+                    // 完全不知道为什么。至少把第一条原因带出去。
+                    failCount++;
+                    if (firstError.Length == 0) firstError = ex.Message;
+                    AppLog.Warn($"批量下载失败: {result.Url} — {ex.Message}");
+                }
             }
-            catch { failCount++; }
+        }
+        catch (OperationCanceledException)
+        {
+            setStatus($"已取消批量下载：已加入队列 {successCount} 个，失败 {failCount} 个");
+            return;   // finally 里收尾
+        }
+        finally
+        {
+            IsBatchDownloading = false;
+            BatchProgressText = string.Empty;
+            _batchCts?.Dispose();
+            _batchCts = null;
         }
 
-        setStatus($"\u2705 批量下载完成: 成功 {successCount} 个, 失败 {failCount} 个"
-            + (skippedCount > 0 ? $" (跳过 {skippedCount} 个已下载)" : ""));
+        var summary = $"\u2705 批量下载完成: 成功 {successCount} 个, 失败 {failCount} 个"
+                      + (skippedCount > 0 ? $" (跳过 {skippedCount} 个已下载)" : "");
+        if (failCount > 0 && firstError.Length > 0)
+            summary += $"\n首个失败原因: {firstError}";
+        setStatus(summary);
+
         SelectedTab = TabQueue; // Switch to queue tab
 
         // Clear selection after download (counts refresh via PropertyChanged)
         foreach (var item in source)
             item.IsSelected = false;
+    }
+
+    private static string Shorten(string? text, int max)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        return text.Length <= max ? text : text[..max] + "…";
     }
 
     // ══════════════════════════════════════════════════════════
@@ -1317,5 +1405,6 @@ public partial class MainViewModel : ObservableObject
     private Task BatchDownloadCategoryAsync()
         => BatchDownloadCoreAsync(CategoryResults, m => CategoryStatusMessage = m);
 
-    private bool CanBatchCategoryDownload() => SelectedCategoryResultCount > 0 && !IsBrowsingCategory;
+    private bool CanBatchCategoryDownload()
+        => SelectedCategoryResultCount > 0 && !IsBrowsingCategory && !IsBatchDownloading;
 }

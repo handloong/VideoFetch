@@ -83,7 +83,7 @@ internal static class DownloadQueueTests
         Check("enqueue: 完成标记", item.IsCompleted);
         Check("enqueue: 进度 100", Math.Abs(item.Progress - 100) < 0.01);
         Check("enqueue: 不再活跃", !item.IsActive);
-        Check("enqueue: 状态 Completed", item.Status == "Completed");
+        Check("enqueue: 状态 Completed", item.State == DownloadState.Completed);
         Check("enqueue: 失败标记未置位", !item.HasFailed);
         Check("enqueue: 文件已落盘", File.Exists(item.OutputPath));
         Check("enqueue: 写入下载记录（去重依据）", h.Records.GetByUrl(item.Url) != null);
@@ -193,7 +193,8 @@ internal static class DownloadQueueTests
         Check("failure: 标记失败", item.HasFailed);
         Check("failure: 不再活跃", !item.IsActive);
         Check("failure: 未标记完成", !item.IsCompleted);
-        Check("failure: 状态带原因", item.Status.StartsWith("Failed:") && item.Status.Contains("410"));
+        Check("failure: 状态为 Failed 且带原因",
+            item.State == DownloadState.Failed && item.LastError.Contains("410"), item.LastError);
         Check("failure: 残留文件被清掉", !File.Exists(item.OutputPath));
         Check("failure: 不写下载记录", h.Records.GetByUrl(item.Url) == null);
 
@@ -212,11 +213,11 @@ internal static class DownloadQueueTests
         using var h = new Harness();
         var item = await h.FailedItemAsync("https://site.test/v/fail-cancel");
 
-        var statusBefore = item.Status;
+        var stateBefore = item.State;
         var cancelled = h.Queue.TryCancel(item);
 
         Check("cancel-failed: 失败任务取消返回 false（按钮不该出现）", !cancelled);
-        Check("cancel-failed: 不会把状态改成 Cancelling", item.Status == statusBefore);
+        Check("cancel-failed: 状态不变", item.State == stateBefore);
         Check("cancel-failed: 仍保持失败标记", item.HasFailed && !item.IsCancelled);
         Check("cancel-failed: 界面不提供取消按钮", !item.CanCancel);
         Check("cancel-failed: 界面提供重试按钮", item.CanRetry);
@@ -231,14 +232,14 @@ internal static class DownloadQueueTests
     {
         using var h = new Harness();
         var item = await h.FailedItemAsync("https://site.test/v/delete");
-        var originalStatus = item.Status;
+        var originalState = item.State;
 
         var deleted = h.Queue.DeleteToTrash(item);
 
         Check("delete-failed: 删除成功", deleted);
         Check("delete-failed: 进入回收站", item.IsDeleted && item.IsInTrash);
-        Check("delete-failed: 状态显示已删除", item.Status == LanguageService.GetString("Queue_Status_Deleted"));
-        Check("delete-failed: 原状态被保存以便恢复", item.StatusBeforeTrash == originalStatus);
+        Check("delete-failed: 状态变为已删除", item.State == DownloadState.Deleted);
+        Check("delete-failed: 原状态被保存以便恢复", item.StateBeforeTrash == originalState);
 
         Check("delete-failed: 重复删除被拒绝", !h.Queue.DeleteToTrash(item));
     }
@@ -251,7 +252,7 @@ internal static class DownloadQueueTests
     {
         using var h = new Harness();
         var item = await h.FailedItemAsync("https://site.test/v/restore");
-        var failStatus = item.Status;
+        var failState = item.State;
         h.Queue.DeleteToTrash(item);
 
         var restored = h.Queue.Restore(item);
@@ -260,7 +261,8 @@ internal static class DownloadQueueTests
         Check("restore-failed: 不再标记删除", !item.IsDeleted);
         Check("restore-failed: 不会被当成文件丢失", !item.IsFileMissing);
         Check("restore-failed: 真的离开回收站", !item.IsInTrash);
-        Check("restore-failed: 还原失败原因", item.Status == failStatus);
+        Check("restore-failed: 还原失败状态", item.State == failState);
+        Check("restore-failed: 失败原因还在", item.LastError.Contains("410"), item.LastError);
         Check("restore-failed: 仍可重试", item.CanRetry);
     }
 
@@ -277,7 +279,7 @@ internal static class DownloadQueueTests
         h.Queue.DeleteToTrash(okItem);
         Check("restore-ok: 文件还在时恢复成功", h.Queue.Restore(okItem));
         Check("restore-ok: 回到已完成状态", okItem.IsCompleted && !okItem.IsInTrash);
-        Check("restore-ok: 状态还原", okItem.Status == "Completed");
+        Check("restore-ok: 状态还原", okItem.State == DownloadState.Completed);
 
         // (b) 文件已被外部删掉 → 不能恢复，只能彻底删除
         var gone = await h.EnqueueAndWaitAsync(Info("https://site.test/v/restore-gone", "文件没了"));
@@ -317,7 +319,7 @@ internal static class DownloadQueueTests
         var statusLog = new List<string>();
         item.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(DownloadItem.Status)) statusLog.Add(item.Status);
+            if (e.PropertyName == nameof(DownloadItem.State)) statusLog.Add(item.State.ToString());
         };
 
         var oldCts = item.CancellationSource;
@@ -332,7 +334,7 @@ internal static class DownloadQueueTests
         Check("retry: 重新抓取页面信息", h.Provider.FetchCount == fetchCountBefore + 1);
 
         await WaitUntilAsync(() => !item.IsActive);
-        Check("retry: 重试后下载成功", item.IsCompleted && item.Status == "Completed");
+        Check("retry: 重试后下载成功", item.IsCompleted && item.State == DownloadState.Completed);
         Check("retry: 重试后写入下载记录", h.Records.GetByUrl(item.Url) != null);
 
         Check("retry: 已完成的任务不能再重试", !h.Queue.Retry(item));
@@ -353,12 +355,13 @@ internal static class DownloadQueueTests
 
         var cancelled = h.Queue.TryCancel(item);
         Check("cancel-running: 取消被接受", cancelled);
-        Check("cancel-running: 先显示 Cancelling", item.Status == "Cancelling..." || item.Status == "Cancelled");
+        Check("cancel-running: 先显示正在取消或已取消",
+            item.State == DownloadState.Cancelled || item.Note.Length > 0);
 
         gate.ReleaseAll();
-        await WaitUntilAsync(() => !item.IsActive && item.Status == "Cancelled", 10000);
+        await WaitUntilAsync(() => !item.IsActive && item.State == DownloadState.Cancelled, 10000);
 
-        Check("cancel-running: 最终状态 Cancelled", item.Status == "Cancelled");
+        Check("cancel-running: 最终状态 Cancelled", item.State == DownloadState.Cancelled);
         Check("cancel-running: 标记为已取消", item.IsCancelled);
         Check("cancel-running: 不算失败", !item.HasFailed);
         Check("cancel-running: 残留文件被清掉", !File.Exists(item.OutputPath));
@@ -391,7 +394,7 @@ internal static class DownloadQueueTests
 
         Check("cancel-then-retry: 重试不被旧任务的收尾覆盖",
             queued.IsCompleted && !queued.IsCancelled && !queued.HasFailed);
-        Check("cancel-then-retry: 状态最终为 Completed", queued.Status == "Completed");
+        Check("cancel-then-retry: 状态最终为 Completed", queued.State == DownloadState.Completed);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -452,16 +455,16 @@ internal static class DownloadQueueTests
 
     private static void ButtonVisibilityMatrix()
     {
-        var active = new DownloadItem { IsActive = true, Status = "Downloading" };
-        var failed = new DownloadItem { IsActive = false, HasFailed = true, Status = "Failed: x" };
-        var cancelled = new DownloadItem { IsActive = false, IsCancelled = true, Status = "Cancelled" };
-        var done = new DownloadItem { IsActive = false, IsCompleted = true, Status = "Completed" };
-        var trashed = new DownloadItem { IsActive = false, HasFailed = true, IsDeleted = true, Status = "已删除" };
-        var trashedDone = new DownloadItem { IsActive = false, IsCompleted = true, IsDeleted = true, Status = "已删除" };
+        var active = new DownloadItem { IsActive = true, State = DownloadState.Downloading };
+        var failed = new DownloadItem { IsActive = false, HasFailed = true, State = DownloadState.Failed, LastError = "x" };
+        var cancelled = new DownloadItem { IsActive = false, IsCancelled = true, State = DownloadState.Cancelled };
+        var done = new DownloadItem { IsActive = false, IsCompleted = true, State = DownloadState.Completed };
+        var trashed = new DownloadItem { IsActive = false, HasFailed = true, IsDeleted = true, State = DownloadState.Deleted };
+        var trashedDone = new DownloadItem { IsActive = false, IsCompleted = true, IsDeleted = true, State = DownloadState.Deleted };
         var trashedMissing = new DownloadItem
         {
             IsActive = false, IsCompleted = true, IsDeleted = true,
-            IsFileMissing = true, Status = "已删除"
+            IsFileMissing = true, State = DownloadState.Deleted
         };
 
         AssertButtons("下载中", active, cancel: true, retry: false, delete: false, deleteFile: false);
@@ -522,9 +525,11 @@ internal static class DownloadQueueTests
         }
     }
 
-    private static void Check(string name, bool condition)
+    private static void Check(string name, bool condition, string? actual = null)
     {
-        Console.WriteLine(condition ? $"  PASS  {name}" : $"  FAIL  {name}");
+        Console.WriteLine(condition
+            ? $"  PASS  {name}"
+            : $"  FAIL  {name}" + (actual is null ? "" : $"  (实际: {actual})"));
         if (!condition) _failed++;
     }
 

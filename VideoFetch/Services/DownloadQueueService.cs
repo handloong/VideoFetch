@@ -94,7 +94,7 @@ public class DownloadQueueService
                 Progress = 100,
                 IsCompleted = fileExists,
                 IsFileMissing = !fileExists,
-                Status = fileExists ? "已完成" : "文件已删除",
+                State = fileExists ? DownloadState.Completed : DownloadState.FileMissing,
                 Speed = string.Empty,
                 AddedAt = rec.DownloadedAt,
                 IsActive = false
@@ -135,7 +135,7 @@ public class DownloadQueueService
             OutputPath = outputPath,
             Quality = qualityKey,
             Site = info.Site,
-            Status = "Queued",
+            State = DownloadState.Queued,
             IsActive = true
         };
 
@@ -169,10 +169,10 @@ public class DownloadQueueService
         item.IsCancelled = false;
         item.IsDeleted = false;
         item.IsFileMissing = false;
-        item.StatusBeforeTrash = string.Empty;
+        item.StateBeforeTrash = null;
         item.Progress = 0;
         item.Speed = string.Empty;
-        item.Status = "Queued";
+        item.State = DownloadState.Queued;
         item.IsActive = true;
 
         _ = RunQueuedAsync(item, knownInfo: null);
@@ -211,7 +211,7 @@ public class DownloadQueueService
                 return;
             }
 
-            item.Status = "Downloading";
+            item.State = DownloadState.Downloading;
             item.IsDownloading = true;
 
             // 重试路径没有缓存的 VideoInfo，重新抓一次页面
@@ -232,7 +232,7 @@ public class DownloadQueueService
                     {
                         if (pct >= 0) item.Progress = pct;
                         item.Speed = speed;
-                        item.Status = pct >= 100 ? "Completed" : "Downloading";
+                        item.State = pct >= 100 ? DownloadState.Completed : DownloadState.Downloading;
                     });
                 },
                 ct: token);
@@ -241,7 +241,7 @@ public class DownloadQueueService
             if (!IsCurrentRun()) return;        // 结果已作废，别去覆写新一轮的状态
             item.OutputPath = finalPath;
             item.Progress = 100;
-            item.Status = "Completed";
+            item.State = DownloadState.Completed;
             item.IsCompleted = true;
             item.HasFailed = false;
             item.IsCancelled = false;
@@ -291,7 +291,7 @@ public class DownloadQueueService
 
     private static void MarkCancelled(DownloadItem item)
     {
-        item.Status = "Cancelled";
+        item.State = DownloadState.Cancelled;
         item.IsCancelled = true;
         item.HasFailed = false;
         item.IsActive = false;
@@ -300,7 +300,8 @@ public class DownloadQueueService
 
     private static void MarkFailed(DownloadItem item, Exception ex)
     {
-        item.Status = $"Failed: {ex.Message}";
+        item.State = DownloadState.Failed;
+        item.LastError = ex.Message;
         item.HasFailed = true;
         item.IsCancelled = false;
         item.IsActive = false;
@@ -338,7 +339,7 @@ public class DownloadQueueService
         }
 
         // A running download exits its loop asynchronously; show the intent first.
-        item.Status = "Cancelling...";
+        item.Note = LanguageService.GetString("State_Cancelling");
         return true;
     }
 
@@ -357,9 +358,10 @@ public class DownloadQueueService
         if (item is null || item.IsActive || item.IsDeleted) return false;
 
         // 记住原状态，恢复时要还原（失败任务恢复后还得显示失败原因）
-        item.StatusBeforeTrash = item.Status;
+        item.StateBeforeTrash = item.State;
         item.IsDeleted = true;
-        item.Status = LanguageService.GetString("Queue_Status_Deleted");
+        item.Note = string.Empty;
+        item.State = DownloadState.Deleted;
         return true;
     }
 
@@ -385,18 +387,17 @@ public class DownloadQueueService
         item.IsDeleted = false;
         item.IsFileMissing = false;
 
-        item.Status = string.IsNullOrEmpty(item.StatusBeforeTrash)
-            ? DeriveStatus(item)
-            : item.StatusBeforeTrash;
-        item.StatusBeforeTrash = string.Empty;
+        item.Note = string.Empty;
+        item.State = item.StateBeforeTrash ?? DeriveState(item);
+        item.StateBeforeTrash = null;
         return true;
     }
 
-    private static string DeriveStatus(DownloadItem item)
-        => item.IsCompleted ? "已完成"
-         : item.HasFailed ? "Failed"
-         : item.IsCancelled ? "Cancelled"
-         : "Queued";
+    private static DownloadState DeriveState(DownloadItem item)
+        => item.IsCompleted ? DownloadState.Completed
+         : item.HasFailed ? DownloadState.Failed
+         : item.IsCancelled ? DownloadState.Cancelled
+         : DownloadState.Queued;
 
     /// <summary>彻底删除：移出列表；文件已丢失时一并清掉去重记录。</summary>
     public bool Purge(DownloadItem item)

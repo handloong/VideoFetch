@@ -75,6 +75,8 @@
     <sys:String x:Key="Hint_DoubleClick">Double-click to preview image (ESC to close)</sys:String>
     <sys:String x:Key="Btn_DownloadRow">⬇ DL</sys:String>
     <sys:String x:Key="Btn_LoadMore">Load More Results...</sys:String>
+    <sys:String x:Key="Btn_CancelBatch">✕ Cancel</sys:String>
+    <sys:String x:Key="Batch_Progress">Preparing {0}/{1}: {2}</sys:String>
     <sys:String x:Key="Btn_IncludeDownloaded">Include Downloaded</sys:String>
     <sys:String x:Key="Tip_IncludeDownloaded">When checked, previously downloaded videos will be re-downloaded (like Xunlei force re-download)</sys:String>
 
@@ -103,6 +105,16 @@
     <sys:String x:Key="Queue_Filter_Failed">Failed ({0})</sys:String>
     <sys:String x:Key="Queue_Filter_Deleted">Deleted ({0})</sys:String>
     <sys:String x:Key="Queue_Status_Deleted">Deleted</sys:String>
+
+    <!-- Download state (localized from the DownloadState enum) -->
+    <sys:String x:Key="State_Queued">Queued</sys:String>
+    <sys:String x:Key="State_Downloading">Downloading</sys:String>
+    <sys:String x:Key="State_Completed">Completed</sys:String>
+    <sys:String x:Key="State_Failed">Failed</sys:String>
+    <sys:String x:Key="State_Cancelled">Cancelled</sys:String>
+    <sys:String x:Key="State_Cancelling">Cancelling…</sys:String>
+    <sys:String x:Key="State_Deleted">Deleted</sys:String>
+    <sys:String x:Key="State_FileMissing">File deleted</sys:String>
     <sys:String x:Key="Queue_Header_Title">Title</sys:String>
     <sys:String x:Key="Queue_Header_Progress">Progress</sys:String>
     <sys:String x:Key="Queue_Header_Status">Status</sys:String>

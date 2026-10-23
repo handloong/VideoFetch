@@ -75,6 +75,8 @@
     <sys:String x:Key="Hint_DoubleClick">双击行可预览缩略图（ESC关闭）</sys:String>
     <sys:String x:Key="Btn_DownloadRow">⬇ 下载</sys:String>
     <sys:String x:Key="Btn_LoadMore">加载更多结果...</sys:String>
+    <sys:String x:Key="Btn_CancelBatch">✕ 取消批量</sys:String>
+    <sys:String x:Key="Batch_Progress">正在准备 {0}/{1}：{2}</sys:String>
     <sys:String x:Key="Btn_IncludeDownloaded">包含已下载项</sys:String>
     <sys:String x:Key="Tip_IncludeDownloaded">勾选后，已下载过的视频也会被重新下载（类似迅雷强制重下载）</sys:String>
 
@@ -102,7 +104,16 @@
     <sys:String x:Key="Queue_Filter_Completed">已完成 ({0})</sys:String>
     <sys:String x:Key="Queue_Filter_Failed">失败 ({0})</sys:String>
     <sys:String x:Key="Queue_Filter_Deleted">已删除 ({0})</sys:String>
-    <sys:String x:Key="Queue_Status_Deleted">已删除</sys:String>
+
+    <!-- 下载任务状态（按 DownloadState 枚举本地化） -->
+    <sys:String x:Key="State_Queued">等待中</sys:String>
+    <sys:String x:Key="State_Downloading">下载中</sys:String>
+    <sys:String x:Key="State_Completed">已完成</sys:String>
+    <sys:String x:Key="State_Failed">失败</sys:String>
+    <sys:String x:Key="State_Cancelled">已取消</sys:String>
+    <sys:String x:Key="State_Cancelling">正在取消…</sys:String>
+    <sys:String x:Key="State_Deleted">已删除</sys:String>
+    <sys:String x:Key="State_FileMissing">文件已删除</sys:String>
     <sys:String x:Key="Queue_Header_Title">标题</sys:String>
     <sys:String x:Key="Queue_Header_Progress">进度</sys:String>
     <sys:String x:Key="Queue_Header_Status">状态</sys:String>
