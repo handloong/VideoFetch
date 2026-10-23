@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VideoFetch.Models;
 using VideoFetch.ViewModels;
+using VideoFetch.Services;
 using VideoFetch.Views;
 
 namespace VideoFetch.Test;
@@ -122,6 +123,9 @@ internal static class UiSmokeTest
         // 5) 下载页：失败行必须给出「重试 / 删除任务」，不能再是点了没反应的「取消」
         ok &= CheckQueueTab(vm);
 
+        // 4b) 内置播放器：音量记忆 + 播放时机
+        ok &= CheckPlayer();
+
         // 6) 搜索结果 / 分类结果的行右键菜单
         ok &= CheckResultContextMenus(vm);
 
@@ -233,6 +237,64 @@ internal static class UiSmokeTest
         // 复位，避免把测试数据写进配置
         vm.ResultSort = ResultSort.Default;
         vm.SearchResults.Clear();
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 内置播放器的两件事：
+    /// ① 音量要记住（恢复上次的值，改完关窗写回配置）；
+    /// ② 播放请求要等到窗口加载+媒体就绪才执行 —— 之前 Play() 在 Show() 之前调用，
+    ///    MediaElement 不在视觉树里，Play 命令被丢弃，表现是"停在第一帧，拖一下才播"。
+    ///
+    /// 真实媒体文件无法在测试里播放（没有解码器），所以这里验证的是状态机：
+    /// 请求播放后、媒体就绪前，不能谎报"正在播放"。
+    /// </summary>
+    private static bool CheckPlayer()
+    {
+        var ok = true;
+
+        var original = SettingsService.Directory;
+        var dir = Path.Combine(Path.GetTempPath(), "vf-player-" + Guid.NewGuid().ToString("N")[..8]);
+        SettingsService.Directory = dir;
+
+        try
+        {
+            var settings = new AppSettings { PlayerVolume = 0.35 };
+            var player = new VideoPlayerWindow(settings);
+            var slider = player.FindName("VolumeSlider") as Slider;
+            var media = player.FindName("Media") as MediaElement;
+
+            ok &= Check("player: 音量控件已就绪", slider != null && media != null);
+            if (slider == null || media == null) return false;
+
+            ok &= Check("player: 恢复上次音量",
+                Math.Abs(slider.Value - 35) < 0.01 && Math.Abs(media.Volume - 0.35) < 0.01,
+                $"slider={slider.Value} volume={media.Volume}");
+
+            // 拖音量条 → 立刻写回设置对象（落盘由防抖定时器/关窗负责）
+            slider.Value = 60;
+            ok &= Check("player: 改音量同步到设置",
+                Math.Abs(settings.PlayerVolume - 0.60) < 0.01, settings.PlayerVolume.ToString("0.00"));
+            ok &= Check("player: 改音量同步到播放器",
+                Math.Abs(media.Volume - 0.60) < 0.01, media.Volume.ToString("0.00"));
+
+            // 播放时机：窗口还没显示，不能谎报在播放（这正是"双击不播"的根因）
+            player.Play(Path.Combine(Path.GetTempPath(), "vf-player-not-real.mp4"));
+            ok &= Check("player: 未加载时不谎报正在播放", !player.IsPlaying);
+            ok &= Check("player: 已绑定媒体源", media.Source != null, media.Source?.ToString());
+
+            // 关窗 → 音量落盘
+            player.Close();
+            var saved = new SettingsService().Load();
+            ok &= Check("player: 关闭时把音量写进配置",
+                Math.Abs(saved.PlayerVolume - 0.60) < 0.01, saved.PlayerVolume.ToString("0.00"));
+        }
+        finally
+        {
+            SettingsService.Directory = original;
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
+        }
 
         return ok;
     }

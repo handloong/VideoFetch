@@ -387,6 +387,11 @@ public class AppSettings
     public bool CreateSubfolders { get; set; } = false;
     public bool UseBuiltInPlayer { get; set; } = false;
 
+    /// <summary>
+    /// 内置播放器音量（0–1）。改了音量就记住，下次打开沿用。
+    /// </summary>
+    public double PlayerVolume { get; set; } = 1.0;
+
     /// <summary>结果列表的排序偏好（记住上次选择）。</summary>
     public ResultSort ResultSort { get; set; } = ResultSort.Default;
 

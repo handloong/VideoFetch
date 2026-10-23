@@ -19,7 +19,8 @@ public partial class QueueTab : UserControl
 
         if (useBuiltIn)
         {
-            var player = new VideoPlayerWindow();
+            // 把设置实例传进去：播放器改音量时能写回 PlayerVolume
+            var player = new VideoPlayerWindow(vm?.Settings);
             player.Play(item.OutputPath);
             player.Show();
         }
