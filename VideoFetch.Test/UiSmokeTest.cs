@@ -419,9 +419,22 @@ internal static class UiSmokeTest
             ok &= Check("lang: 两个语言选项", langCombo?.Items.Count == 2,
                 langCombo?.Items.Count.ToString());
 
-            var selectedTag = (langCombo?.SelectedItem as ComboBoxItem)?.Tag as string;
-            ok &= Check("lang: 预选当前语言", selectedTag == LanguageService.CurrentLanguage,
-                selectedTag ?? "null");
+            // 下拉项必须是数据对象，不能是 ComboBoxItem 元素：元素已被列表持有，
+            // 再拿去做选中框内容会触发 WPF 的"必须断开父 Visual"异常
+            ok &= Check("lang: 下拉项是数据对象而不是 UIElement",
+                langCombo!.Items.Cast<object>().All(i => i is not System.Windows.UIElement),
+                string.Join(",", langCombo.Items.Cast<object>().Select(i => i.GetType().Name)));
+
+            // 选中框里放的必须是数据对象，不能是已被父级占用的元素
+            ok &= Check("lang: 选中框内容不是 UIElement",
+                langCombo.SelectionBoxItem is not System.Windows.UIElement,
+                langCombo.SelectionBoxItem?.GetType().Name ?? "null");
+            ok &= Check("lang: 选中框显示当前语言",
+                langCombo.SelectionBoxItem?.ToString() == Res("Lang_ZhCN"),
+                langCombo.SelectionBoxItem?.ToString() ?? "null");
+
+            ok &= Check("lang: 预选当前语言", (langCombo.SelectedValue as string) == LanguageService.CurrentLanguage,
+                langCombo.SelectedValue as string ?? "null");
 
             // 选英文 → 立即生效（不再重启进程）
             langCombo!.SelectedIndex = 1;

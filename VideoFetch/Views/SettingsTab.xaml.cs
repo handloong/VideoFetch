@@ -19,20 +19,29 @@ public partial class SettingsTab : UserControl
         Loaded += (_, _) => SelectCurrentLanguage();
     }
 
+    /// <summary>下拉项。用数据项而不是 ComboBoxItem 元素：元素本身已经被列表持有，
+    /// 选中时再拿去渲染选中框会撞上 WPF 的视觉父子规则。</summary>
+    private sealed record LanguageOption(string Value, string Label)
+    {
+        // 和 DurationOption/SortOption 一样：ComboBox 收起时会用 ToString 渲染
+        public override string ToString() => Label;
+    }
+
     private void SelectCurrentLanguage()
     {
-        var current = Services.LanguageService.CurrentLanguage;
         _initializing = true;
         try
         {
-            foreach (var obj in LangCombo.Items)
+            if (LangCombo.ItemsSource == null)
             {
-                if (obj is ComboBoxItem item && (item.Tag as string) == current)
+                LangCombo.ItemsSource = new[]
                 {
-                    LangCombo.SelectedItem = item;
-                    break;
-                }
+                    new LanguageOption("zh-CN", Services.LanguageService.GetString("Lang_ZhCN")),
+                    new LanguageOption("en-US", Services.LanguageService.GetString("Lang_ENUS"))
+                };
             }
+
+            LangCombo.SelectedValue = Services.LanguageService.CurrentLanguage;
         }
         finally
         {
@@ -48,9 +57,8 @@ public partial class SettingsTab : UserControl
     private void LangCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_initializing) return;
-        if (sender is not ComboBox cb || cb.SelectedItem is not ComboBoxItem item) return;
-
-        var culture = item.Tag as string ?? "zh-CN";
+        if (sender is not ComboBox cb || cb.SelectedValue is not string culture) return;
+        if (string.IsNullOrEmpty(culture)) return;
         if (Services.LanguageService.CurrentLanguage == culture) return;
 
         if (!Services.LanguageService.SwitchLanguage(culture)) return;

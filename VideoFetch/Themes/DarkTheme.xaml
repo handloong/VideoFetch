@@ -399,9 +399,16 @@
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
+                                            <!-- 必须用 SelectionBoxItem 而不是 SelectedItem：
+                                                 SelectedItem 是列表里的**元素本身**，它已经挂在 ItemsPanel 上；
+                                                 再配合非空的 ContentTemplate，WPF 会试图把这个元素重新
+                                                 挂到 ContentPresenter 下，直接抛
+                                                 "在指定子级连接到新的父 Visual 之前必须断开与当前父 Visual 的连接"。
+                                                 SelectionBoxItem 才是"该显示的内容"（元素的话是它的 Content）。 -->
                                             <ContentPresenter Grid.Column="0"
-                                                              Content="{Binding SelectedItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                               ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                              ContentStringFormat="{Binding SelectionBoxItemStringFormat, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                               Margin="10,6,0,6"
                                                               VerticalAlignment="Center"
                                                               HorizontalAlignment="Stretch"/>
