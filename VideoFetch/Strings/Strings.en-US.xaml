@@ -48,6 +48,13 @@
     <!-- Result list context menu -->
     <sys:String x:Key="Menu_OpenSourceUrl">🔗 Open Source URL</sys:String>
 
+    <!-- Duration filter (91pinse only) -->
+    <sys:String x:Key="Dur_Tooltip">Filter by duration (91pinse only)</sys:String>
+    <sys:String x:Key="Dur_All">Any duration</sys:String>
+    <sys:String x:Key="Dur_Short">&lt; 5 min</sys:String>
+    <sys:String x:Key="Dur_Medium">5-20 min</sys:String>
+    <sys:String x:Key="Dur_Long">20+ min</sys:String>
+
     <!-- Category tab -->
     <sys:String x:Key="Tab_Category">🗂 Categories</sys:String>
     <sys:String x:Key="Btn_LoadCategories">🔄 Load Categories</sys:String>

@@ -48,6 +48,13 @@
     <!-- 结果列表右键菜单 -->
     <sys:String x:Key="Menu_OpenSourceUrl">🔗 打开源网址</sys:String>
 
+    <!-- 时长筛选（目前仅 91pinse 支持） -->
+    <sys:String x:Key="Dur_Tooltip">按时长筛选（仅 91pinse 支持）</sys:String>
+    <sys:String x:Key="Dur_All">全部时长</sys:String>
+    <sys:String x:Key="Dur_Short">&lt; 5 分钟</sys:String>
+    <sys:String x:Key="Dur_Medium">5-20 分钟</sys:String>
+    <sys:String x:Key="Dur_Long">20+ 分钟</sys:String>
+
     <!-- Category tab -->
     <sys:String x:Key="Tab_Category">🗂 分类</sys:String>
     <sys:String x:Key="Btn_LoadCategories">🔄 加载分类</sys:String>

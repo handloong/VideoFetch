@@ -42,6 +42,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="130"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBox Grid.Column="0"
                          Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
@@ -54,7 +55,16 @@
                           ItemsSource="{Binding SupportedSites}"
                           SelectedItem="{Binding SearchSite}"
                           Margin="8,0,0,0" VerticalAlignment="Center" FontSize="12"/>
-                <Button Grid.Column="2" Content="{DynamicResource Btn_Search}"
+                <!-- 时长筛选：只有支持的站点（91pinse）才显示 -->
+                <ComboBox Grid.Column="2"
+                          ItemsSource="{Binding DurationOptions}"
+                          DisplayMemberPath="Label"
+                          SelectedValuePath="Value"
+                          SelectedValue="{Binding DurationFilter}"
+                          Visibility="{Binding ShowSearchDurationFilter, Converter={StaticResource BoolToVis}}"
+                          ToolTip="{DynamicResource Dur_Tooltip}"
+                          Margin="8,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                <Button Grid.Column="3" Content="{DynamicResource Btn_Search}"
                         Command="{Binding SearchCommand}"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Margin="8,0,0,0" VerticalAlignment="Center"/>

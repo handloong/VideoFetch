@@ -306,11 +306,32 @@ public static class CategoryParsing
 
     /// <summary>Category page URL — a keyword search, paginated with &amp;page=N.</summary>
     public static string BuildPinSeUrl(string key, int page)
+        => BuildPinSeUrl(key, page, DurationFilter.All);
+
+    /// <summary>
+    /// 91pinse 搜索/浏览地址。时长筛选走 <c>&amp;dur=</c>，和站点自己下拉框
+    /// 用的参数完全一致：short(&lt;5 分钟) / medium(5-20) / long(20+)。
+    /// </summary>
+    public static string BuildPinSeUrl(string key, int page, DurationFilter duration)
     {
         var keyword = (key ?? "").Trim();
         var url = "https://91pinse.com/v/search?keyword=" + Uri.EscapeDataString(keyword);
-        return page > 1 ? url + "&page=" + page : url;
+        if (page > 1) url += "&page=" + page;
+
+        var dur = DurationParam(duration);
+        if (dur.Length > 0) url += "&dur=" + dur;
+
+        return url;
     }
+
+    /// <summary>时长筛选对应的请求参数值（空字符串 = 不筛选）。</summary>
+    public static string DurationParam(DurationFilter duration) => duration switch
+    {
+        DurationFilter.Short => "short",
+        DurationFilter.Medium => "medium",
+        DurationFilter.Long => "long",
+        _ => ""
+    };
 
     // ═══════════════════════════════════════════════════════
     //  shared helpers

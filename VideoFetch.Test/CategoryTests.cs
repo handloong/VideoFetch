@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using VideoFetch.Models;
+using VideoFetch.Services;
 using VideoFetch.Services.Sites;
 
 namespace VideoFetch.Test;
@@ -183,6 +184,47 @@ internal static class CategoryTests
 
         Equal("pinse: empty html yields empty list", 0,
             CategoryParsing.ParsePinSe("<html><body><div>nothing</div></body></html>").Count);
+
+        TestPinSeDuration();
+    }
+
+    /// <summary>
+    /// 91pinse 的时长筛选走站点的 ?dur= 参数：
+    /// 空=全部 / short(&lt;5 分钟) / medium(5-20) / long(20+)。
+    /// </summary>
+    private static void TestPinSeDuration()
+    {
+        Console.WriteLine("-- pinse 时长筛选");
+
+        Equal("duration: All 不带参数", "", CategoryParsing.DurationParam(DurationFilter.All));
+        Equal("duration: Short", "short", CategoryParsing.DurationParam(DurationFilter.Short));
+        Equal("duration: Medium", "medium", CategoryParsing.DurationParam(DurationFilter.Medium));
+        Equal("duration: Long", "long", CategoryParsing.DurationParam(DurationFilter.Long));
+
+        // 全部时长必须保持和改动前一模一样的 URL（不能冒出空参数 &dur=）
+        Equal("duration: All 时 URL 不变",
+            "https://91pinse.com/v/search?keyword=%E7%86%9F%E5%A5%B3",
+            PinSeParser.BuildCategoryUrl("熟女", 1, DurationFilter.All));
+
+        Equal("duration: Long 追加 &dur=long",
+            "https://91pinse.com/v/search?keyword=%E7%86%9F%E5%A5%B3&dur=long",
+            PinSeParser.BuildCategoryUrl("熟女", 1, DurationFilter.Long));
+
+        Equal("duration: 翻页 + 时长同时生效",
+            "https://91pinse.com/v/search?keyword=%E7%86%9F%E5%A5%B3&page=2&dur=medium",
+            PinSeParser.BuildCategoryUrl("熟女", 2, DurationFilter.Medium));
+
+        // 能力声明：界面据此决定是否显示下拉框。
+        // 默认实现挂在 ISiteParser 上，所以必须通过接口看，不能看具体类。
+        ISiteParser pinse = new PinSeParser();
+        ISiteParser porn = new PornHubParser();
+        ISiteParser xv = new XVideosParser();
+        ISiteParser xn = new XNxxParser();
+        Check("duration: 只有 91pinse 声明支持",
+            pinse.SupportsDurationFilter
+            && !porn.SupportsDurationFilter
+            && !xv.SupportsDurationFilter
+            && !xn.SupportsDurationFilter);
     }
 
     // ══════════════════════════════════════════════════════════

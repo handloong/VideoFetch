@@ -25,6 +25,31 @@ public enum QueueFilter
 }
 
 /// <summary>
+/// 按时长筛选视频（对应 91pinse 的 ?dur= 参数）。
+/// 只有声明了 <c>SupportsDurationFilter</c> 的站点会真正使用它。
+/// </summary>
+public enum DurationFilter
+{
+    All,
+    /// <summary>&lt; 5 分钟</summary>
+    Short,
+    /// <summary>5-20 分钟</summary>
+    Medium,
+    /// <summary>20+ 分钟</summary>
+    Long
+}
+
+/// <summary>
+/// 时长下拉框的显示项（文案本地化，Value 用于请求）。
+/// ToString 返回 Label：ComboBox 收起时用 SelectionBoxItem 渲染，
+/// 没有它就会把整条记录的 ToString 显示出来（"DurationOption { Label = … }"）。
+/// </summary>
+public record DurationOption(string Label, DurationFilter Value)
+{
+    public override string ToString() => Label;
+}
+
+/// <summary>
 /// Represents a video quality option
 /// </summary>
 public record QualityOption(string Label, string Value);

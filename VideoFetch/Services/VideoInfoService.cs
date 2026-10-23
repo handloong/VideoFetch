@@ -94,6 +94,21 @@ public class VideoInfoService : IVideoInfoProvider
         return await parser.SearchAsync(query, page, ct);
     }
 
+    /// <summary>
+    /// Search with an optional duration filter. Sites that don't support it
+    /// silently ignore the filter (see ISiteParser.SupportsDurationFilter).
+    /// </summary>
+    public async Task<List<SearchResult>> SearchAsync(
+        SiteType site, string query, int page, DurationFilter duration, CancellationToken ct = default)
+    {
+        var parser = GetParser(site)
+            ?? throw new NotSupportedException($"Search not supported for site: {site}");
+        return await parser.SearchAsync(query, page, duration, ct);
+    }
+
+    /// <summary>该站点是否支持时长筛选（驱动界面是否显示时长下拉框）。</summary>
+    public bool SupportsDurationFilter(SiteType site) => GetParser(site)?.SupportsDurationFilter == true;
+
     // ── CATEGORIES ─────────────────────────────────────────────
 
     /// <summary>
@@ -115,6 +130,15 @@ public class VideoInfoService : IVideoInfoProvider
         var parser = GetParser(site)
             ?? throw new NotSupportedException($"Categories not supported for site: {site}");
         return await parser.BrowseCategoryAsync(categoryKey, page, ct);
+    }
+
+    /// <summary>Browse a category with an optional duration filter.</summary>
+    public async Task<List<SearchResult>> BrowseCategoryAsync(
+        SiteType site, string categoryKey, int page, DurationFilter duration, CancellationToken ct = default)
+    {
+        var parser = GetParser(site)
+            ?? throw new NotSupportedException($"Categories not supported for site: {site}");
+        return await parser.BrowseCategoryAsync(categoryKey, page, duration, ct);
     }
 
     // ── STREAM RESOLUTION ─────────────────────────────────────

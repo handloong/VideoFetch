@@ -41,6 +41,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <ComboBox Grid.Column="0"
@@ -51,6 +52,15 @@
                         Command="{Binding LoadCategoriesCommand}"
                         Style="{StaticResource PrimaryButtonStyle}"
                         Margin="8,0,0,0" VerticalAlignment="Center"/>
+                <!-- 时长筛选：只有支持的站点（91pinse）才显示 -->
+                <ComboBox Grid.Column="2"
+                          ItemsSource="{Binding DurationOptions}"
+                          DisplayMemberPath="Label"
+                          SelectedValuePath="Value"
+                          SelectedValue="{Binding DurationFilter}"
+                          Visibility="{Binding ShowCategoryDurationFilter, Converter={StaticResource BoolToVis}}"
+                          ToolTip="{DynamicResource Dur_Tooltip}"
+                          Margin="8,0,0,0" VerticalAlignment="Center" FontSize="12"/>
             </Grid>
         </Border>
 

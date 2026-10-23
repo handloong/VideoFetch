@@ -92,6 +92,43 @@ public partial class MainViewModel : ObservableObject
     private SiteType _searchSite = SiteType.PornHub;
 
     /// <summary>
+    /// 时长筛选（只有支持该能力的站点会真正传给站点，目前是 91pinse）。
+    /// 搜索和分类页共用同一个设置。
+    /// </summary>
+    [ObservableProperty]
+    private DurationFilter _durationFilter = DurationFilter.All;
+
+    /// <summary>时长下拉框的选项（文案本地化）。</summary>
+    public ObservableCollection<DurationOption> DurationOptions { get; } = new();
+
+    /// <summary>搜索页是否显示时长下拉框（仅支持的站点）。</summary>
+    public bool ShowSearchDurationFilter => _infoService.SupportsDurationFilter(SearchSite);
+
+    /// <summary>分类页是否显示时长下拉框（仅支持的站点）。</summary>
+    public bool ShowCategoryDurationFilter => _infoService.SupportsDurationFilter(CategorySite);
+
+    partial void OnSearchSiteChanged(SiteType value)
+        => OnPropertyChanged(nameof(ShowSearchDurationFilter));
+
+    /// <summary>
+    /// 切换时长筛选后立刻重跑当前视图，否则要用户再点一次才生效。
+    /// </summary>
+    partial void OnDurationFilterChanged(DurationFilter value)
+    {
+        var site = _browsedCategory != null ? CategorySite : SearchSite;
+        if (!_infoService.SupportsDurationFilter(site)) return;
+
+        if (_browsedCategory != null)
+        {
+            _ = BrowseCategoryAsync(_browsedCategory);
+        }
+        else if (SearchResults.Count > 0 && !string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            _ = SearchAsync();
+        }
+    }
+
+    /// <summary>
     /// Search results collection
     /// </summary>
     public ObservableCollection<SearchResult> SearchResults { get; } = new();
@@ -182,6 +219,12 @@ public partial class MainViewModel : ObservableObject
     {
         _settings = _settingsService.Load();
         _queue = new DownloadQueueService(_settings, _recordService);
+
+        // 时长筛选项（只有支持的站点会显示这个下拉框）
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_All"), DurationFilter.All));
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Short"), DurationFilter.Short));
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Medium"), DurationFilter.Medium));
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Long"), DurationFilter.Long));
 
         // 应用代理设置（解析器/下载引擎共享同一个 handler）
         HttpClientFactory.Configure(EffectiveProxyUrl());
@@ -805,7 +848,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var results = await _infoService.SearchAsync(SearchSite, query, page: 1);
+            var results = await _infoService.SearchAsync(SearchSite, query, page: 1, DurationFilter);
             await PrepareResultsAsync(results, SearchResults);
 
             HasMoreResults = results.Count >= 20; // assume more if we got a full page
@@ -839,7 +882,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var results = await _infoService.SearchAsync(SearchSite, SearchQuery.Trim(), page: nextPage);
+            var results = await _infoService.SearchAsync(SearchSite, SearchQuery.Trim(), nextPage, DurationFilter);
             await PrepareResultsAsync(results, SearchResults);
             CurrentPage = nextPage;
             HasMoreResults = results.Count >= 20;
@@ -1128,6 +1171,7 @@ public partial class MainViewModel : ObservableObject
         CategoryResults.Clear();
         HasMoreCategoryResults = false;
         CategoryStatusMessage = string.Empty;
+        OnPropertyChanged(nameof(ShowCategoryDurationFilter));
     }
 
     /// <summary>
@@ -1201,7 +1245,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var results = await _infoService.BrowseCategoryAsync(CategorySite, category.Key, page);
+            var results = await _infoService.BrowseCategoryAsync(CategorySite, category.Key, page, DurationFilter);
             await PrepareResultsAsync(results, CategoryResults);
 
             CurrentCategoryPage = page;

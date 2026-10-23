@@ -146,9 +146,16 @@ public class PinSeParser : ISiteParser
     /// URL: https://91pinse.com/v/search?keyword=xxx
     /// </summary>
     public async Task<List<SearchResult>> SearchAsync(string query, int page = 1, CancellationToken ct = default)
+        => await SearchAsync(query, page, DurationFilter.All, ct);
+
+    /// <summary>91pinse 支持站点的时长筛选（&amp;dur=short|medium|long）。</summary>
+    public bool SupportsDurationFilter => true;
+
+    public async Task<List<SearchResult>> SearchAsync(
+        string query, int page, DurationFilter duration, CancellationToken ct = default)
     {
         var results = new List<SearchResult>();
-        var searchUrl = BuildSearchUrl(query, page);
+        var searchUrl = BuildSearchUrl(query, page, duration);
 
         try
         {
@@ -213,17 +220,24 @@ public class PinSeParser : ISiteParser
     public static string BuildCategoryUrl(string categoryKey, int page = 1)
         => CategoryParsing.BuildPinSeUrl(categoryKey, page);
 
+    public static string BuildCategoryUrl(string categoryKey, int page, DurationFilter duration)
+        => CategoryParsing.BuildPinSeUrl(categoryKey, page, duration);
+
     /// <summary>
     /// Browse a 91Pinse "category" — the key is a keyword, browsed through
     /// /v/search?keyword=…&amp;page=N (20 items per page).
     /// </summary>
     public async Task<List<SearchResult>> BrowseCategoryAsync(string categoryKey, int page = 1, CancellationToken ct = default)
+        => await BrowseCategoryAsync(categoryKey, page, DurationFilter.All, ct);
+
+    public async Task<List<SearchResult>> BrowseCategoryAsync(
+        string categoryKey, int page, DurationFilter duration, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(categoryKey)) return new List<SearchResult>();
 
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, BuildCategoryUrl(categoryKey, page));
+            using var req = new HttpRequestMessage(HttpMethod.Get, BuildCategoryUrl(categoryKey, page, duration));
             req.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
             req.Headers.TryAddWithoutValidation("Accept", AcceptHdr);
             req.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
@@ -502,10 +516,17 @@ public class PinSeParser : ISiteParser
     // ═══════════════════════════════════════════════════════
 
     private static string BuildSearchUrl(string keyword, int page)
+        => BuildSearchUrl(keyword, page, DurationFilter.All);
+
+    private static string BuildSearchUrl(string keyword, int page, DurationFilter duration)
     {
         var encoded = Uri.EscapeDataString(keyword);
         var url = $"https://91pinse.com/v/search?keyword={encoded}";
         if (page > 1) url += $"&page={page}";
+
+        var dur = CategoryParsing.DurationParam(duration);
+        if (dur.Length > 0) url += $"&dur={dur}";
+
         return url;
     }
 

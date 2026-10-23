@@ -125,6 +125,66 @@ internal static class UiSmokeTest
         // 6) 搜索结果 / 分类结果的行右键菜单
         ok &= CheckResultContextMenus(vm);
 
+        // 7) 时长筛选下拉框（仅 91pinse）
+        ok &= CheckDurationFilter(vm);
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 时长筛选下拉框：只在支持的站点（91pinse）出现，且选择能双向绑定到 ViewModel。
+    /// 放在最后跑是因为切站点会清空分类结果，而前面的断言还要用到它们。
+    /// </summary>
+    private static bool CheckDurationFilter(MainViewModel vm)
+    {
+        var ok = true;
+
+        vm.SearchSite = SiteType.PornHub;
+        ok &= Check("ui-smoke: PornHub 搜索页不显示时长筛选", !vm.ShowSearchDurationFilter);
+        vm.SearchSite = SiteType.PinSe;
+        ok &= Check("ui-smoke: 91pinse 搜索页显示时长筛选", vm.ShowSearchDurationFilter);
+
+        ok &= Check("ui-smoke: 时长选项 4 项", vm.DurationOptions.Count == 4);
+        ok &= Check("ui-smoke: 时长文案来自语言资源",
+            vm.DurationOptions[0].Label == (Application.Current.TryFindResource("Dur_All") as string));
+
+        var tab = new SearchTab { DataContext = vm };
+        tab.Measure(new Size(TabWidth, TabHeight));
+        tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        tab.UpdateLayout();
+
+        var combo = FindDescendant<ComboBox>(tab, c => ReferenceEquals(c.ItemsSource, vm.DurationOptions));
+        ok &= Check("ui-smoke: 时长下拉框已绑定", combo != null);
+        if (combo == null) return false;
+
+        ok &= Check("ui-smoke: 时长下拉框对 91pinse 可见", IsEffectivelyVisible(combo));
+        ok &= Check("ui-smoke: 默认全部时长", Equals(combo.SelectedValue, DurationFilter.All));
+
+        // 截图留档（在改动筛选值之前拍，反映默认状态）
+        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(tab);
+        var path = Path.Combine(AppContext.BaseDirectory, "ui-smoke-searchtab.png");
+        using (var fs = File.Create(path))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            encoder.Save(fs);
+        }
+        ok &= Check("ui-smoke: 搜索页截图非空白", !IsBlank(bmp));
+        Console.WriteLine($"  info  screenshot: {path}");
+
+        combo.SelectedValue = DurationFilter.Long;
+        combo.UpdateLayout();
+        ok &= Check("ui-smoke: 选择 20+ 分钟同步到 ViewModel", vm.DurationFilter == DurationFilter.Long);
+
+        vm.DurationFilter = DurationFilter.All;
+        ok &= Check("ui-smoke: ViewModel 改动回写下拉框", Equals(combo.SelectedValue, DurationFilter.All));
+
+        vm.CategorySite = SiteType.XVideos;
+        ok &= Check("ui-smoke: XVideos 分类页不显示时长筛选", !vm.ShowCategoryDurationFilter);
+        vm.CategorySite = SiteType.PinSe;
+        ok &= Check("ui-smoke: 91pinse 分类页显示时长筛选", vm.ShowCategoryDurationFilter);
+
         return ok;
     }
 
@@ -192,6 +252,11 @@ internal static class UiSmokeTest
     /// </summary>
     private static bool CheckQueueTab(MainViewModel vm)
     {
+        // 队列会从真实 %AppData% 数据库加载历史记录。历史一多，测试插入的行
+        // 就会被挤出可视区域，容器生成不出来 → 断言假失败。先清空，保证
+        // 这个测试只依赖自己造的数据。
+        vm.DownloadItems.Clear();
+
         var running = new DownloadItem
         {
             Title = "下载中的任务", Url = "https://example.test/v/active",
