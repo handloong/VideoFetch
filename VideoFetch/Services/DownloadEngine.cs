@@ -267,7 +267,7 @@ public class DownloadEngine
 
         var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Add("Referer", pageUrl);
-        req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1");
+        // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
         var resp = await client.SendAsync(req, ct);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadAsStringAsync(ct);
@@ -334,7 +334,7 @@ public class DownloadEngine
                 {
                     var req = new HttpRequestMessage(HttpMethod.Get, url);
                     req.Headers.Add("Referer", pageUrl);
-                    req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1");
+                    // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
                     var resp = await client.SendAsync(req, ct);
                     resp.EnsureSuccessStatusCode();
                     bytes = await resp.Content.ReadAsByteArrayAsync(ct);
@@ -389,7 +389,7 @@ public class DownloadEngine
         {
             req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Add("Referer", pageUrl);
-            req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1");
+            // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
         }
 
         using (req)

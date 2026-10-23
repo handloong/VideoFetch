@@ -136,6 +136,8 @@
     <sys:String x:Key="Quality_Option_Best">Best Quality</sys:String>
     <sys:String x:Key="Settings_AutoOpenFolder">Auto-open folder after download</sys:String>
     <sys:String x:Key="Settings_CreateSubfolders">Create subfolders by website</sys:String>
+    <sys:String x:Key="Settings_Cookies">Cookies (sign-in)</sys:String>
+    <sys:String x:Key="Settings_CookieHint">Paste the site's document.cookie from your browser to unlock higher quality that requires a signed-in session. Leave empty to disable.</sys:String>
     <sys:String x:Key="Settings_Network">Network Settings</sys:String>
     <sys:String x:Key="Settings_EnableProxy">Enable Proxy</sys:String>
     <sys:String x:Key="Settings_ProxyAddress">Proxy address</sys:String>

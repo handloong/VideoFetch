@@ -213,7 +213,7 @@ public class VideoInfoService : IVideoInfoProvider
         var req = new HttpRequestMessage(HttpMethod.Get, apiUrl);
         req.Headers.Add("Referer", pageUrl);
         req.Headers.Add("X-Requested-With", "XMLHttpRequest");
-        req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1");
+        // Cookie 由共享的 CookieContainer 提供（含用户导入的），这里不要硬写
 
         var resp = await client.SendAsync(req, ct);
         resp.EnsureSuccessStatusCode();

@@ -135,6 +135,8 @@
     <sys:String x:Key="Quality_Option_Best">最佳画质</sys:String>
     <sys:String x:Key="Settings_AutoOpenFolder">下载完成后自动打开文件夹</sys:String>
     <sys:String x:Key="Settings_CreateSubfolders">按网站自动创建子文件夹</sys:String>
+    <sys:String x:Key="Settings_Cookies">Cookie（登录态）</sys:String>
+    <sys:String x:Key="Settings_CookieHint">粘贴浏览器里该站点的 document.cookie，可解锁登录后才有的高清画质。留空表示不使用。</sys:String>
     <sys:String x:Key="Settings_Network">网络设置</sys:String>
     <sys:String x:Key="Settings_EnableProxy">启用代理</sys:String>
     <sys:String x:Key="Settings_ProxyAddress">代理地址</sys:String>

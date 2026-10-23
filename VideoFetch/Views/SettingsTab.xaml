@@ -71,6 +71,29 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Cookie（登录态） -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <Label Content="{DynamicResource Settings_Cookies}" FontWeight="Medium"/>
+                        <TextBlock Text="{DynamicResource Settings_CookieHint}" FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding CookieSites}"
+                                      SelectedItem="{Binding CookieSite}"
+                                      VerticalAlignment="Center" FontSize="12"/>
+                            <TextBox Grid.Column="1" Margin="8,0,0,0"
+                                     Text="{Binding CookieText, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="{DynamicResource Settings_CookieHint}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- Player settings -->
                 <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
                     <StackPanel>

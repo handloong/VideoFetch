@@ -74,6 +74,21 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int _selectedTab = 0;
 
+    /// <summary>设置页里正在编辑 Cookie 的站点。</summary>
+    [ObservableProperty]
+    private SiteType _cookieSite = SiteType.PornHub;
+
+    /// <summary>当前站点的 Cookie 文本（"a=1; b=2"）。保存设置时写回 Settings.SiteCookies。</summary>
+    [ObservableProperty]
+    private string _cookieText = string.Empty;
+
+    /// <summary>支持导入 Cookie 的站点（与站点解析器能力保持一致）。</summary>
+    public IReadOnlyList<SiteType> CookieSites => SiteCookies.SupportedSites;
+
+    /// <summary>切换站点时把已保存的 Cookie 回填到输入框。</summary>
+    partial void OnCookieSiteChanged(SiteType value)
+        => CookieText = Settings.SiteCookies.TryGetValue(value.ToString(), out var raw) ? raw : string.Empty;
+
     // ══════════════════════════════════════════════════════════
     //  SEARCH & CATEGORY PROPERTIES
     // ══════════════════════════════════════════════════════════
@@ -220,6 +235,11 @@ public partial class MainViewModel : ObservableObject
         _settings = _settingsService.Load();
         _queue = new DownloadQueueService(_settings, _recordService);
 
+        // 把已保存的 Cookie 回填到设置页输入框
+        CookieText = _settings.SiteCookies.TryGetValue(CookieSite.ToString(), out var savedCookie)
+            ? savedCookie
+            : string.Empty;
+
         // 时长筛选项（只有支持的站点会显示这个下拉框）
         DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_All"), DurationFilter.All));
         DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Short"), DurationFilter.Short));
@@ -227,7 +247,7 @@ public partial class MainViewModel : ObservableObject
         DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Long"), DurationFilter.Long));
 
         // 应用代理设置（解析器/下载引擎共享同一个 handler）
-        HttpClientFactory.Configure(EffectiveProxyUrl());
+        HttpClientFactory.Configure(EffectiveProxyUrl(), Settings.SiteCookies);
 
         // Keep HasSearchResults in sync with SearchResults collection
         // Also update 1-based indices for display
@@ -766,7 +786,11 @@ public partial class MainViewModel : ObservableObject
         // Apply new settings to the long-lived queue service (never rebuild it:
         // rebuilding orphans in-flight downloads and breaks the Items binding)
         _queue.ApplySettings();
-        HttpClientFactory.Configure(EffectiveProxyUrl());
+
+        // 把界面上正在编辑的 Cookie 写回设置，再重建 HTTP 客户端
+        if (!string.IsNullOrWhiteSpace(CookieSite.ToString()))
+            Settings.SiteCookies[CookieSite.ToString()] = CookieText ?? string.Empty;
+        HttpClientFactory.Configure(EffectiveProxyUrl(), Settings.SiteCookies);
 
         // Show save success message (auto-clear after 2.5 seconds)
         SettingsSavedMessage = "✅ 设置保存成功！";

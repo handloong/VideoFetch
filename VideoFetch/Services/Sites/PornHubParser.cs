@@ -23,7 +23,7 @@ public class PornHubParser : ISiteParser
     {
         var info = new VideoInfo { Url = url, Site = Site };
         var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1; country=CN");
+        // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
         req.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
         try
@@ -106,7 +106,7 @@ public class PornHubParser : ISiteParser
         var results = new List<SearchResult>();
         var searchUrl = $"https://www.pornhub.com/video/search?search={Uri.EscapeDataString(query)}&page={page}";
         var req = new HttpRequestMessage(HttpMethod.Get, searchUrl);
-        req.Headers.Add("Cookie", "platform=pc; ageconfirmed=1; age_verified=1; country=CN");
+        // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
         req.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
         try
@@ -173,8 +173,6 @@ public class PornHubParser : ISiteParser
     // ═══════════════════════════════════════════════════════
 
     private const string UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-    private const string CookieHeader = "platform=pc; ageconfirmed=1; age_verified=1; country=CN";
-
     /// <summary>Category page URL for a key from GetCategoriesAsync.</summary>
     public static string BuildCategoryUrl(string categoryKey, int page = 1)
         => CategoryParsing.BuildPornHubUrl(categoryKey, page);
@@ -220,7 +218,6 @@ public class PornHubParser : ISiteParser
     private static async Task<string> GetHtmlAsync(string url, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.TryAddWithoutValidation("Cookie", CookieHeader);
         req.Headers.TryAddWithoutValidation("User-Agent", UA);
 
         using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);

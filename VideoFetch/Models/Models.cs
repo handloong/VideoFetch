@@ -322,6 +322,12 @@ public class AppSettings
     public bool AutoOpenFolder { get; set; } = false;
     public bool CreateSubfolders { get; set; } = false;
     public bool UseBuiltInPlayer { get; set; } = false;
+
+    /// <summary>
+    /// 用户导入的 Cookie：站点名（SiteType 的 ToString）→ "a=1; b=2"。
+    /// 用于登录态才能拿到的高清/会员内容。
+    /// </summary>
+    public Dictionary<string, string> SiteCookies { get; set; } = new();
 }
 
 /// <summary>

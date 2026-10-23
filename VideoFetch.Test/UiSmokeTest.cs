@@ -134,6 +134,48 @@ internal static class UiSmokeTest
         // 9) 弹层主题（右键菜单 / ToolTip 都是独立视觉树，不继承主题）
         ok &= CheckPopupThemes();
 
+        // 10) 设置页的 Cookie 导入
+        ok &= CheckCookieSettings(vm);
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 设置页的 Cookie 导入：切站点要回填该站点已保存的 Cookie，输入框双向绑定。
+    /// </summary>
+    private static bool CheckCookieSettings(MainViewModel vm)
+    {
+        var ok = true;
+
+        vm.Settings.SiteCookies["PinSe"] = "session=abc; uid=7";
+        vm.Settings.SiteCookies["XVideos"] = string.Empty;
+
+        vm.CookieSite = SiteType.XVideos;
+        ok &= Check("ui-smoke: 切到未配置的站点时输入框为空", vm.CookieText.Length == 0, vm.CookieText);
+
+        vm.CookieSite = SiteType.PinSe;
+        ok &= Check("ui-smoke: 切站点回填已保存的 Cookie",
+            vm.CookieText == "session=abc; uid=7", vm.CookieText);
+
+        var tab = new SettingsTab { DataContext = vm };
+        tab.Measure(new Size(TabWidth, TabHeight));
+        tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        tab.UpdateLayout();
+
+        var combo = FindDescendant<ComboBox>(tab, c => ReferenceEquals(c.ItemsSource, vm.CookieSites));
+        ok &= Check("ui-smoke: Cookie 站点下拉框已绑定", combo != null);
+        ok &= Check("ui-smoke: Cookie 站点下拉框有 4 项", combo?.Items.Count == 4);
+
+        var box = FindDescendant<TextBox>(tab,
+            t => ReferenceEquals(t.DataContext, vm)
+                 && t.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path
+                    == nameof(MainViewModel.CookieText));
+        ok &= Check("ui-smoke: Cookie 输入框已绑定", box != null);
+        ok &= Check("ui-smoke: 输入框显示当前 Cookie", box?.Text == vm.CookieText, box?.Text);
+
+        // 清理，避免影响别的检查
+        vm.Settings.SiteCookies.Clear();
+        vm.CookieSite = SiteType.PornHub;
         return ok;
     }
 
