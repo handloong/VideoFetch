@@ -409,18 +409,35 @@ public partial class MainViewModel : ObservableObject
     private void PurgeTask(DownloadItem? item)
     {
         if (item == null) return;
-        if (!_queue.Purge(item)) return;
-        RefreshSearchMarks();
-        RefreshQueueStats();
+        try
+        {
+            if (!_queue.Purge(item)) return;
+            RefreshSearchMarks();
+            RefreshQueueStats();
+        }
+        catch (Exception ex)
+        {
+            // SQLite 被占用之类的失败不能让程序消失
+            AppLog.Error("彻底删除任务失败", ex);
+            FetchStatusMessage = $"⚠️ 删除失败：{ex.Message}";
+        }
     }
 
     /// <summary>清空回收站。</summary>
     [RelayCommand]
     private void EmptyTrash()
     {
-        if (_queue.EmptyTrash() == 0) return;
-        RefreshSearchMarks();
-        RefreshQueueStats();
+        try
+        {
+            if (_queue.EmptyTrash() == 0) return;
+            RefreshSearchMarks();
+            RefreshQueueStats();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("清空回收站失败", ex);
+            FetchStatusMessage = $"⚠️ 清空回收站失败：{ex.Message}";
+        }
     }
 
     /// <summary>同步刷新搜索/分类结果上的"已下载"标记（记录变动后调用）。</summary>
@@ -667,7 +684,17 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        _queue.Enqueue(VideoInfo, SelectedQuality.Value);
+        try
+        {
+            _queue.Enqueue(VideoInfo, SelectedQuality.Value);
+        }
+        catch (Exception ex)
+        {
+            // 输出目录不可写、磁盘满之类：给出提示，别把整个程序带崩
+            AppLog.Error($"加入下载队列失败: {VideoInfo.Url}", ex);
+            FetchStatusMessage = $"⚠️ 加入下载队列失败：{ex.Message}";
+            return;
+        }
 
         SelectedTab = TabQueue; // Switch to queue tab
 

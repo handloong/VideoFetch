@@ -39,12 +39,13 @@ if (dlIndex >= 0)
 var categoriesOk = CategoryTests.Run();
 var downloadOk = await DownloadQueueTests.RunAsync();
 var qualityOk = QualityTests.Run();
+var logOk = AppLogTests.Run();
 var uiOk = UiSmokeTest.Run();
 
 if (!live && !catsOnly)
 {
     Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
-    Environment.ExitCode = categoriesOk && downloadOk && qualityOk && uiOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && qualityOk && logOk && uiOk ? 0 : 1;
     return;
 }
 
@@ -52,7 +53,7 @@ var liveCategoriesOk = await CategoryLiveTests.RunAsync();
 
 if (catsOnly)
 {
-    Environment.ExitCode = categoriesOk && downloadOk && qualityOk && uiOk && liveCategoriesOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && qualityOk && logOk && uiOk && liveCategoriesOk ? 0 : 1;
     return;
 }
 
