@@ -412,7 +412,7 @@ public class DownloadQueueService
                 catch (Exception openEx) { AppLog.Warn($"打开文件夹失败（不影响下载结果）: {openEx.Message}"); }
             }
         }
-        catch (OperationCanceledException ex) when (token.IsCancellationRequested)
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             if (IsCurrentRun())
             {

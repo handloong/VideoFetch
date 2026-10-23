@@ -140,11 +140,11 @@ internal static class DownloadProbe
                 {
                     var sub = PlaylistFirstUri(playlist, streamUrl, wantStreamInf: true);
                     Console.WriteLine($"  HOP1b   sub-playlist → {Trim(sub, 100)}");
-                    var (s2, r2, l2, t2, b2) = await GetHeadAsync(sub, info.Url);
+                    var (s2, r2, l2, t2, b2) = await GetHeadAsync(sub ?? streamUrl, info.Url);
                     Console.WriteLine($"  HOP1b   {s2} {r2}  type={t2} len={l2}");
                     if (!IsOk(s2)) { Console.WriteLine(); return; }
                     playlist = b2;
-                    streamUrl = sub;
+                    streamUrl = sub ?? streamUrl;
                 }
 
                 var seg = PlaylistFirstUri(playlist, streamUrl, wantStreamInf: false);

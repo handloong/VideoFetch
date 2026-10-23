@@ -82,7 +82,7 @@ internal static class SettingsServiceTests
         var loaded = new SettingsService().Load();
 
         Check("settings: 配置损坏时回退到默认值", loaded != null);
-        Check("settings: 回退后并发数是默认值", loaded.MaxConcurrentDownloads == 2, loaded.MaxConcurrentDownloads.ToString());
+        Check("settings: 回退后并发数是默认值", loaded!.MaxConcurrentDownloads == 2, loaded.MaxConcurrentDownloads.ToString());
         Check("settings: 回退后不抛异常", loaded.SiteCookies != null);
     }
 
