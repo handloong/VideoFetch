@@ -653,6 +653,7 @@ internal static class UiSmokeTest
             Title = "已完成的任务", Url = "https://example.test/v/done",
             State = DownloadState.Completed, IsCompleted = true, Progress = 100,
             Duration = "0:02:14",
+            FileSize = 12897485,          // 12.3M
             AddedAt = new DateTime(2026, 10, 23, 9, 5, 0),
             CompletedAt = new DateTime(2026, 10, 23, 9, 7, 0),
             OutputPath = Path.Combine(Path.GetTempPath(), "vf-ui-smoke-done.mp4")
@@ -758,6 +759,18 @@ internal static class UiSmokeTest
             string.Join(" | ", columns));
         ok &= Check("ui-smoke: 队列表格有「下载时间」列",
             columns.Contains(Btn("Queue_Header_DownloadTime")));
+        ok &= Check("ui-smoke: 队列表格有「大小」列",
+            columns.Contains(Btn("Queue_Header_Size")), string.Join(" | ", columns));
+
+        // 标题一长就被截断，所以列宽必须能拖、横向必须能滚
+        var grip = FindDescendant<GridViewColumnHeader>(tab, _ => true);
+        ok &= Check("ui-smoke: 表头有拖拽把手（列宽可调）",
+            grip?.Template?.FindName("PART_HeaderGrip", grip) != null);
+        ok &= Check("ui-smoke: 队列列表允许横向滚动",
+            ScrollViewer.GetHorizontalScrollBarVisibility(list) == ScrollBarVisibility.Auto,
+            ScrollViewer.GetHorizontalScrollBarVisibility(list).ToString());
+        ok &= Check("ui-smoke: 队列列表允许纵向滚动",
+            ScrollViewer.GetVerticalScrollBarVisibility(list) == ScrollBarVisibility.Auto);
 
         // 单元格真的渲染出了内容（只断言列头，绑定断了也发现不了）
         var completedRow = vm.DownloadItems.FirstOrDefault(i => i.IsCompleted);
@@ -771,6 +784,8 @@ internal static class UiSmokeTest
             // 单元格真的渲染出来了（虚拟化下只查可见行）
             ok &= Check("ui-smoke: 时长列渲染出 0:02:14",
                 FindDescendant<TextBlock>(tab, t => t.Text == "0:02:14") != null);
+            ok &= Check("ui-smoke: 大小列用最大单位渲染（12.3M）",
+                FindDescendant<TextBlock>(tab, t => t.Text == "12.3M") != null);
             ok &= Check("ui-smoke: 下载时间列渲染出 2026-10-23 09:07",
                 FindDescendant<TextBlock>(tab, t => t.Text == "2026-10-23 09:07") != null);
         }

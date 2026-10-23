@@ -128,6 +128,7 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     private string _note = string.Empty;
     private string _duration = string.Empty;
     private DateTime? _completedAt;
+    private long _fileSize = -1;
 
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Title { get; set; } = string.Empty;
@@ -136,6 +137,22 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public string Quality { get; set; } = string.Empty;
     public SiteType Site { get; set; }
     public DateTime AddedAt { get; set; } = DateTime.Now;
+
+    /// <summary>文件大小（字节）。未知用 -1 —— 0 字节的文件实际上不存在，
+    /// 但老记录里 0 就是"没记"，所以 <= 0 一律当未知。</summary>
+    public long FileSize
+    {
+        get => _fileSize;
+        set
+        {
+            _fileSize = value;
+            OnPropertyChanged(nameof(FileSize));
+            OnPropertyChanged(nameof(FileSizeText));
+        }
+    }
+
+    /// <summary>界面显示的文件大小（用最大单位，如 "1.2G" / "12.3M"）。</summary>
+    public string FileSizeText => _fileSize <= 0 ? Services.FileSizeFormat.Unknown : Services.FileSizeFormat.Format(_fileSize);
 
     /// <summary>
     /// 视频时长文案（站点原样，如 "0:02:14" / "11 min" / "13分钟"）。

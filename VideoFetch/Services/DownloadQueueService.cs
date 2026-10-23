@@ -52,8 +52,11 @@ public class DownloadQueueService
         _infoProvider = infoProvider;
         _runnerFactory = runnerFactory;
         _ui = ui;
-        _currentMaxConcurrent = Math.Max(1, settings.MaxConcurrentDownloads);
-        _concurrencySemaphore = new SemaphoreSlim(_currentMaxConcurrent, _currentMaxConcurrent);
+        _currentMaxConcurrent = ClampConcurrency(settings.MaxConcurrentDownloads);
+        // 上限必须给足：ApplySettings 会在运行中把并发数调高，用 Release 补额度。
+        // 上限若等于初始值，Release 会抛 "Adding the specified count to the
+        // semaphore would cause it to exceed its maximum count"（改设置直接报错）。
+        _concurrencySemaphore = new SemaphoreSlim(_currentMaxConcurrent, MaxConcurrency);
 
         // 启动时加载历史下载记录
         LoadHistory();
@@ -68,13 +71,17 @@ public class DownloadQueueService
     /// </summary>
     public void ApplySettings()
     {
-        var target = Math.Max(1, _settings.MaxConcurrentDownloads);
-        if (target > _currentMaxConcurrent)
-        {
-            _concurrencySemaphore.Release(target - _currentMaxConcurrent);
-            _currentMaxConcurrent = target;
-        }
+        var target = ClampConcurrency(_settings.MaxConcurrentDownloads);
+        if (target <= _currentMaxConcurrent) return;   // 调小要等重启才生效
+
+        _concurrencySemaphore.Release(target - _currentMaxConcurrent);
+        _currentMaxConcurrent = target;
     }
+
+    /// <summary>并发数的合法区间。上限只是防止手滑输入天文数字。</summary>
+    public const int MaxConcurrency = 64;
+
+    private static int ClampConcurrency(int value) => Math.Clamp(value, 1, MaxConcurrency);
 
     /// <summary>
     /// Load completed download records from SQLite into the queue display.
@@ -98,6 +105,7 @@ public class DownloadQueueService
                 Speed = string.Empty,
                 AddedAt = rec.DownloadedAt,
                 Duration = rec.Duration,
+                FileSize = rec.FileSize,
                 IsActive = false
             });
         }
@@ -260,6 +268,7 @@ public class DownloadQueueService
             {
                 var fileSize = System.IO.File.Exists(item.OutputPath)
                     ? new System.IO.FileInfo(item.OutputPath).Length : 0L;
+                item.FileSize = fileSize;
                 var siteName = item.Site.ToString();
                 _recordService.InsertRecord(item.Url, item.Title, siteName,
                     item.Quality, item.OutputPath, fileSize, item.Duration);

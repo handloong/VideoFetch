@@ -124,6 +124,7 @@
     <sys:String x:Key="Queue_Header_Title">Title</sys:String>
     <sys:String x:Key="Queue_Header_Duration">Duration</sys:String>
     <sys:String x:Key="Queue_Header_DownloadTime">Downloaded</sys:String>
+    <sys:String x:Key="Queue_Header_Size">Size</sys:String>
     <sys:String x:Key="Queue_Header_Progress">Progress</sys:String>
     <sys:String x:Key="Queue_Header_Status">Status</sys:String>
     <sys:String x:Key="Queue_Header_Speed">Speed</sys:String>

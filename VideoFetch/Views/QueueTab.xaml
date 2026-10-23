@@ -96,10 +96,13 @@
             <ListView ItemsSource="{Binding QueueItemsView}"
                       Background="Transparent" BorderThickness="0"
                       ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
-                      MouseDoubleClick="QueueList_MouseDoubleClick">
+                      MouseDoubleClick="QueueList_MouseDoubleClick"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                      ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListView.View>
-                    <GridView AllowsColumnReorder="False">
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Title}" Width="220">
+                    <!-- 允许拖动表头换列顺序；列宽靠表头右边缘拖拽调整 -->
+                    <GridView AllowsColumnReorder="True">
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Title}" Width="200">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
@@ -116,6 +119,15 @@
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                ToolTip="{Binding Duration}"/>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Size}" Width="70">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:DownloadItem}">
+                                    <TextBlock Text="{Binding FileSizeText}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
@@ -157,7 +169,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Actions}" Width="200">
+                        <GridViewColumn Header="{DynamicResource Queue_Header_Actions}" Width="190">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <Grid>

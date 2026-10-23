@@ -34,6 +34,8 @@ internal static class DownloadQueueTests
         await Safe("dedup", DuplicateEnqueueRejectedAsync);
         await Safe("same-title", SameTitleGetsDistinctPathsAsync);
         await Safe("concurrency", ConcurrencyLimitAsync);
+        await Safe("concurrency-raise", RaiseConcurrencyAsync);
+        await Safe("file-size", FileSizeAsync);
         await Safe("failure", FailureIsRecordedAsync);
         await Safe("cancel-failed", CancelOnFailedIsRefusedAsync);
         await Safe("delete-failed", DeleteFailedTaskAsync);
@@ -175,6 +177,75 @@ internal static class DownloadQueueTests
         Check("concurrency: 排队的任务最终都完成",
             h.Queue.Items.Count(i => i.IsCompleted) == 2);
         Check("concurrency: 两次下载串行执行", h.Runner.Calls.Count == 2);
+    }
+
+    /// <summary>
+    /// 运行中调大并发数（设置页改完点保存）。
+    ///
+    /// 以前 SemaphoreSlim 的上限就是初始值，Release 补额度时会抛
+    /// "Adding the specified count to the semaphore would cause it to exceed
+    /// its maximum count"，用户看到的是弹窗"出现了一个内部错误"。
+    /// </summary>
+    private static async Task RaiseConcurrencyAsync()
+    {
+        using var h = new Harness(maxConcurrent: 1);
+        var gate = h.HoldRunner();
+
+        h.Queue.Enqueue(Info("https://site.test/v/c1", "任务1"), QualityKey);
+        await WaitUntilAsync(() => h.Queue.Items.Count(i => i.IsDownloading) == 1);
+
+        h.Settings.MaxConcurrentDownloads = 4;
+        var threw = false;
+        try { h.Queue.ApplySettings(); }
+        catch (Exception ex)
+        {
+            threw = true;
+            Console.WriteLine($"  info  ApplySettings 抛了 {ex.GetType().Name}: {ex.Message}");
+        }
+        Check("concurrency-raise: 调大并发数不抛异常", !threw);
+
+        for (var i = 2; i <= 4; i++)
+            h.Queue.Enqueue(Info($"https://site.test/v/c{i}", $"任务{i}"), QualityKey);
+
+        await WaitUntilAsync(() => h.Queue.Items.Count(i => i.IsDownloading) >= 4, 8000);
+        Check("concurrency-raise: 调大后真的并行 4 个",
+            h.Queue.Items.Count(i => i.IsDownloading) == 4,
+            h.Queue.Items.Count(i => i.IsDownloading).ToString());
+
+        // 调小不报错，只是要等重启才生效
+        h.Settings.MaxConcurrentDownloads = 1;
+        var threw2 = false;
+        try { h.Queue.ApplySettings(); }
+        catch { threw2 = true; }
+        Check("concurrency-raise: 调小也不抛异常", !threw2);
+
+        gate.ReleaseAll();
+        await WaitUntilAsync(() => h.Queue.Items.All(i => !i.IsActive), 15000);
+    }
+
+    /// <summary>文件大小：永远用最大单位（1.2G / 12.3M），未知用占位符。</summary>
+    private static async Task FileSizeAsync()
+    {
+        Check("size: 512 字节", FileSizeFormat.Format(512) == "512B", FileSizeFormat.Format(512));
+        Check("size: 1K", FileSizeFormat.Format(1024) == "1K", FileSizeFormat.Format(1024));
+        Check("size: 1.5K", FileSizeFormat.Format(1536) == "1.5K", FileSizeFormat.Format(1536));
+        Check("size: 12.3M",
+            FileSizeFormat.Format((long)(12.3 * 1024 * 1024)) == "12.3M",
+            FileSizeFormat.Format((long)(12.3 * 1024 * 1024)));
+        Check("size: 1.2G",
+            FileSizeFormat.Format((long)(1.2 * 1024 * 1024 * 1024)) == "1.2G",
+            FileSizeFormat.Format((long)(1.2 * 1024 * 1024 * 1024)));
+        // 1048570 按 1024 算会停在 "1024K"，应该进位成 "1M"
+        Check("size: 临界值进位成 1M",
+            FileSizeFormat.Format(1048570) == "1M", FileSizeFormat.Format(1048570));
+        Check("size: 未知显示占位符",
+            FileSizeFormat.Format(0) == "—" && FileSizeFormat.Format(-1) == "—");
+
+        // 真实下载完成后要带上大小
+        using var h = new Harness();
+        var item = await h.EnqueueAndWaitAsync(Info("https://site.test/v/size", "带大小"));
+        Check("size: 完成时记录大小", item.FileSize > 0, item.FileSize.ToString());
+        Check("size: 显示文案不是占位符", item.FileSizeText != "—", item.FileSizeText);
     }
 
     // ══════════════════════════════════════════════════════════

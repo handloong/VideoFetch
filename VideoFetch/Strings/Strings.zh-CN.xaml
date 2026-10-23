@@ -123,6 +123,7 @@
     <sys:String x:Key="Queue_Header_Title">标题</sys:String>
     <sys:String x:Key="Queue_Header_Duration">时长</sys:String>
     <sys:String x:Key="Queue_Header_DownloadTime">下载时间</sys:String>
+    <sys:String x:Key="Queue_Header_Size">大小</sys:String>
     <sys:String x:Key="Queue_Header_Progress">进度</sys:String>
     <sys:String x:Key="Queue_Header_Status">状态</sys:String>
     <sys:String x:Key="Queue_Header_Speed">速度</sys:String>
