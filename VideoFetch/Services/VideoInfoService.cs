@@ -29,11 +29,11 @@ public class VideoInfoService : IVideoInfoProvider
 
     public SiteType DetectSite(string url)
     {
-        if (url.Contains("pornhub.com") || url.Contains("pornhubpremium.com")) return SiteType.PornHub;
-        if (url.Contains("xvideos.com")) return SiteType.XVideos;
-        if (url.Contains("xnxx.com")) return SiteType.XNxx;
-        if (url.Contains("91pinse.com")) return SiteType.PinSe;
-        return SiteType.Unknown;
+        if (string.IsNullOrWhiteSpace(url)) return SiteType.Unknown;
+
+        // 走解析器自己的 CanHandle，别在这里再写一份域名判断 ——
+        // 两套规则迟早会不一致（镜像域名、相似域名就是典型）。
+        return _parsers.FirstOrDefault(p => p.CanHandle(url))?.Site ?? SiteType.Unknown;
     }
 
     /// <summary>

@@ -43,12 +43,14 @@ var searchOk = SearchParsingTests.Run();
 var qualityOk = QualityTests.Run();
 var logOk = AppLogTests.Run();
 var cookieOk = SiteCookiesTests.Run();
+var routingOk = UrlRoutingTests.Run();
+var settingsOk = SettingsServiceTests.Run();
 var uiOk = UiSmokeTest.Run();
 
 if (!live && !catsOnly)
 {
     Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
-    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && qualityOk && logOk && cookieOk && uiOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk ? 0 : 1;
     return;
 }
 
@@ -56,7 +58,7 @@ var liveCategoriesOk = await CategoryLiveTests.RunAsync();
 
 if (catsOnly)
 {
-    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && qualityOk && logOk && cookieOk && uiOk && liveCategoriesOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk && liveCategoriesOk ? 0 : 1;
     return;
 }
 

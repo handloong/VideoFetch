@@ -298,6 +298,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int _trashCount;
 
+    /// <summary>排队中/下载中的任务数（驱动「全部取消」按钮）。</summary>
+    [ObservableProperty]
+    private int _activeCount;
+
     /// <summary>Empty-state hint text, follows the selected category.</summary>
     [ObservableProperty]
     private string _queueEmptyText = "暂无下载任务";
@@ -381,6 +385,7 @@ public partial class MainViewModel : ObservableObject
         FilterFailedText = string.Format(LanguageService.GetString("Queue_Filter_Failed"), failed);
         FilterDeletedText = string.Format(LanguageService.GetString("Queue_Filter_Deleted"), trash);
         TrashCount = trash;
+        ActiveCount = active;
 
         QueueEmptyText = QueueFilter switch
         {
@@ -782,7 +787,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveSettingsAsync()
     {
-        _settingsService.Save(Settings);
+        var saved = _settingsService.Save(Settings);
         // Apply new settings to the long-lived queue service (never rebuild it:
         // rebuilding orphans in-flight downloads and breaks the Items binding)
         _queue.ApplySettings();
@@ -792,8 +797,10 @@ public partial class MainViewModel : ObservableObject
             Settings.SiteCookies[CookieSite.ToString()] = CookieText ?? string.Empty;
         HttpClientFactory.Configure(EffectiveProxyUrl(), Settings.SiteCookies);
 
-        // Show save success message (auto-clear after 2.5 seconds)
-        SettingsSavedMessage = "✅ 设置保存成功！";
+        // 原来无论写盘成功与否都显示"保存成功"，磁盘满/无权限时用户完全不知情
+        SettingsSavedMessage = saved
+            ? "✅ 设置保存成功！"
+            : "⚠️ 设置保存失败：无法写入配置文件，请检查磁盘空间与权限";
         await Task.Delay(2500);
         SettingsSavedMessage = string.Empty;
     }
@@ -1102,6 +1109,14 @@ public partial class MainViewModel : ObservableObject
     private string _batchProgressText = string.Empty;
 
     private CancellationTokenSource? _batchCts;
+
+    /// <summary>取消队列里所有排队中/下载中的任务（CancelAll 一直没接出来）。</summary>
+    [RelayCommand]
+    private void CancelAllDownloads()
+    {
+        _queue.CancelAll();
+        RefreshQueueStats();
+    }
 
     /// <summary>取消正在进行的批量下载（逐条抓页面期间随时可按）。</summary>
     [RelayCommand]

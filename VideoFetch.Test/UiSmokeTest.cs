@@ -554,6 +554,26 @@ internal static class UiSmokeTest
         ok &= Check("ui-smoke: 恢复后回到「失败」视图（不再死循环在回收站）",
             InView(vm, QueueFilter.Failed, failed) && !InView(vm, QueueFilter.Deleted, failed));
 
+        // 「全部取消」：以前 CancelAll 是死代码，界面上根本没有入口
+        running.IsDownloading = false;
+        running.IsActive = false;
+        var queued = new DownloadItem
+        {
+            Title = "排队中的任务", Url = "https://example.test/v/queued",
+            State = DownloadState.Queued, IsActive = true
+        };
+        vm.DownloadItems.Add(queued);
+
+        ok &= Check("ui-smoke: 有活跃任务时显示全部取消", vm.ActiveCount > 0, vm.ActiveCount.ToString());
+        var cancelAll = FindDescendant<Button>(tab, b => (b.Content as string) == Btn("Btn_CancelAll"));
+        ok &= Check("ui-smoke: 全部取消按钮存在",
+            cancelAll != null && IsEffectivelyVisible(cancelAll));
+
+        vm.CancelAllDownloadsCommand.Execute(null);
+        ok &= Check("ui-smoke: 全部取消后没有活跃任务", vm.ActiveCount == 0, vm.ActiveCount.ToString());
+        ok &= Check("ui-smoke: 排队任务被标记为已取消",
+            queued.State == DownloadState.Cancelled, queued.State.ToString());
+
         vm.QueueFilter = QueueFilter.All;
         return ok;
     }

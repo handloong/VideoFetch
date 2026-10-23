@@ -69,6 +69,11 @@
             </StackPanel>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="{DynamicResource Btn_CancelAll}"
+                        Command="{Binding CancelAllDownloadsCommand}"
+                        Style="{StaticResource SecondaryButtonStyle}" Padding="8,3"
+                        Margin="0,0,8,0"
+                        Visibility="{Binding ActiveCount, Converter={StaticResource IntGtZero}}"/>
                 <Button Content="{DynamicResource Btn_EmptyTrash}"
                         Command="{Binding EmptyTrashCommand}"
                         Style="{StaticResource DangerButtonStyle}" Padding="8,3"

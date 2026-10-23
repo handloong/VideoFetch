@@ -25,6 +25,25 @@ public static class ParserHelper
     }
 
     /// <summary>
+    /// URL 是否属于给定域名（含其子域）。
+    ///
+    /// 不能用 <c>url.Contains("xvideos.com")</c>：那种写法既认不出 xvideos.es
+    /// 之类的镜像，又会被 <c>https://evil.com/?u=pornhub.com</c> 这种链接骗到。
+    /// </summary>
+    public static bool UrlMatches(string? url, params string[] domains)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)) return false;
+
+        foreach (var domain in domains)
+        {
+            if (uri.Host.Equals(domain, StringComparison.OrdinalIgnoreCase)) return true;
+            if (uri.Host.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// 解码 HTML 实体，直到结果稳定。
     ///
     /// 站点会把标题二次转义（页面里是 <c>&amp;comma;</c>），只解码一遍会留下

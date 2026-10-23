@@ -14,7 +14,7 @@ public class XVideosParser : ISiteParser
     // Get the shared client per call so a proxy change (HttpClientFactory.Configure) takes effect
 
     public bool CanHandle(string url)
-        => !string.IsNullOrWhiteSpace(url) && url.Contains("xvideos.com");
+        => ParserHelper.UrlMatches(url, "xvideos.com", "xvideos.es", "xvideos2.com");
 
     public async Task<VideoInfo?> FetchVideoInfoAsync(string url, CancellationToken ct = default)
     {

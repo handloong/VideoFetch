@@ -24,6 +24,8 @@ internal static class DownloadEngineTests
         Safe("best-sub-playlist", BestSubPlaylist);
         Safe("container", ContainerDetection);
         Safe("unique-path", UniquePath);
+        Safe("init-segment", InitSegment);
+        Safe("encryption", EncryptionDetection);
 
         return _failed == before;
     }
@@ -160,6 +162,61 @@ internal static class DownloadEngineTests
         {
             try { Directory.Delete(dir, true); } catch { }
         }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  fMP4 初始化段 / AES-128 加密
+    // ══════════════════════════════════════════════════════════
+
+    private static void InitSegment()
+    {
+        string M3u8(params string[] lines) => string.Join("\n", lines);
+
+        var fmp4 = M3u8(
+            "#EXTM3U",
+            "#EXT-X-VERSION:7",
+            "#EXT-X-MAP:URI=\"init.mp4\"",
+            "#EXTINF:4.0,",
+            "seg1.m4s");
+
+        var init = DownloadEngine.ParseInitSegment(fmp4, Base);
+        Check("init-segment: 解析出初始化段",
+            init == "https://cdn.test/abc==,123/video/0/init.mp4", init);
+
+        var withRange = M3u8(
+            "#EXTM3U",
+            "#EXT-X-MAP:URI=\"init.mp4\",BYTERANGE=\"720@0\"",
+            "#EXTINF:4.0,",
+            "seg1.m4s");
+        Check("init-segment: 带 BYTERANGE 也能解析",
+            DownloadEngine.ParseInitSegment(withRange, Base)?.EndsWith("/init.mp4") == true,
+            DownloadEngine.ParseInitSegment(withRange, Base));
+
+        var absolute = M3u8(
+            "#EXTM3U",
+            "#EXT-X-MAP:URI=\"https://other.cdn/init.mp4\"");
+        Check("init-segment: 绝对地址原样返回",
+            DownloadEngine.ParseInitSegment(absolute, Base) == "https://other.cdn/init.mp4");
+
+        var ts = M3u8("#EXTM3U", "#EXTINF:10,", "seg1.ts");
+        Check("init-segment: TS 列表返回 null", DownloadEngine.ParseInitSegment(ts, Base) == null);
+    }
+
+    private static void EncryptionDetection()
+    {
+        string M3u8(params string[] lines) => string.Join("\n", lines);
+
+        Check("encryption: 明文流不误判",
+            !DownloadEngine.IsEncrypted(M3u8("#EXTM3U", "#EXT-X-KEY:METHOD=NONE", "#EXTINF:10,", "a.ts")));
+
+        Check("encryption: 识别 AES-128",
+            DownloadEngine.IsEncrypted(M3u8("#EXTM3U", "#EXT-X-KEY:METHOD=AES-128,URI=\"k.bin\"", "a.ts")));
+
+        Check("encryption: 识别 SAMPLE-AES",
+            DownloadEngine.IsEncrypted("#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"k.bin\""));
+
+        Check("encryption: 无 KEY 行不误判",
+            !DownloadEngine.IsEncrypted(M3u8("#EXTM3U", "#EXTINF:10,", "a.ts")));
     }
 
     private static void Check(string name, bool condition, string? actual = null)

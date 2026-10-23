@@ -34,7 +34,7 @@ public class PinSeParser : ISiteParser
     public SiteType Site => SiteType.PinSe;
 
     public bool CanHandle(string url)
-        => !string.IsNullOrWhiteSpace(url) && url.Contains("91pinse.com");
+        => ParserHelper.UrlMatches(url, "91pinse.com");
 
     // ═══════════════════════════════════════════════════════
     //  FETCH VIDEO INFO

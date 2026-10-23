@@ -14,7 +14,7 @@ public class XNxxParser : ISiteParser
     // Get the shared client per call so a proxy change (HttpClientFactory.Configure) takes effect
 
     public bool CanHandle(string url)
-        => !string.IsNullOrWhiteSpace(url) && url.Contains("xnxx.com");
+        => ParserHelper.UrlMatches(url, "xnxx.com", "xnxx.es");
 
     // ══════════════════════════════════════════════════════
     //  FETCH VIDEO INFO

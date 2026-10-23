@@ -86,10 +86,18 @@ public class DownloadEngine
             baseUri = new Uri(subUrl);
         }
 
-        // 2. Parse segment URLs
+        // 2. 加密流先拒绝：下下来的是密文，与其给用户一个坏文件，不如说清楚
+        if (IsEncrypted(m3u8Content))
+            throw new NotSupportedException("该视频使用 AES-128 加密（#EXT-X-KEY），当前版本暂不支持");
+
+        // 3. Parse segment URLs
         var segments = ParseSegments(m3u8Content, baseUri);
         if (segments.Count == 0)
             throw new InvalidDataException("No segments found in M3U8 playlist.");
+
+        // fMP4/CMAF 需要先拼接初始化段（#EXT-X-MAP），否则整段都不解码
+        var initSegment = ParseInitSegment(m3u8Content, baseUri);
+        if (initSegment != null) segments.Insert(0, initSegment);
 
         // 3. Prepare temp directory for segments
         var tempDir = Path.Combine(Path.GetTempPath(), "videofetch_" + Guid.NewGuid().ToString("N")[..8]);
@@ -321,6 +329,30 @@ public class DownloadEngine
         }
         return segments;
     }
+
+    /// <summary>
+    /// fMP4/CMAF 的初始化段：<c>#EXT-X-MAP:URI="init.mp4"</c>（可能带 BYTERANGE）。
+    /// 这个段必须拼在最前面，否则后面的 moof 分片没有 moov，整段都解不出来。
+    /// 普通 MPEG-TS 列表没有它，返回 null。
+    /// </summary>
+    public static string? ParseInitSegment(string m3u8, Uri baseUri)
+    {
+        // 注意别在 verbatim 字符串里写 \n：要写成 [^\r\n] 或干脆避开换行类
+        var match = Regex.Match(m3u8, @"#EXT-X-MAP:[^""]*URI=""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!match.Success) return null;
+
+        var uri = match.Groups[1].Value.Trim();
+        if (uri.Length == 0) return null;
+
+        return uri.StartsWith("http") ? uri : new Uri(baseUri, uri).ToString();
+    }
+
+    /// <summary>
+    /// 是否 AES-128 加密流。加密段下下来是密文，目前不支持解密，
+    /// 提前失败并给出明确原因，比给用户一个打不开的文件要好。
+    /// </summary>
+    public static bool IsEncrypted(string m3u8)
+        => Regex.IsMatch(m3u8, @"#EXT-X-KEY:\s*METHOD=(?!NONE)[A-Z0-9\-]+", RegexOptions.IgnoreCase);
 
     private static async Task DownloadSegmentWithRetryAsync(
         HttpClient client, string url, string pageUrl, string path, CancellationToken ct, int retries = 3)

@@ -17,7 +17,7 @@ public class PornHubParser : ISiteParser
     // Get the shared client per call so a proxy change (HttpClientFactory.Configure) takes effect
 
     public bool CanHandle(string url)
-        => !string.IsNullOrWhiteSpace(url) && url.Contains("pornhub.com");
+        => ParserHelper.UrlMatches(url, "pornhub.com", "pornhub.org");
 
     public async Task<VideoInfo?> FetchVideoInfoAsync(string url, CancellationToken ct = default)
     {
