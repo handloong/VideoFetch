@@ -306,6 +306,14 @@ public partial class MainViewModel : ObservableObject
         QueueItemsView = CollectionViewSource.GetDefaultView(_queue.Items);
         QueueItemsView.Filter = FilterDownloadItem;
 
+        // 最新下载的排最上面（排序键 = 完成时刻，未完成时是入队时刻）。
+        // 放在视图上而不是底层集合：底层顺序保持写入顺序，去重/遍历逻辑不受影响。
+        if (QueueItemsView is ListCollectionView queueView)
+        {
+            queueView.SortDescriptions.Add(
+                new SortDescription(nameof(DownloadItem.DownloadTime), ListSortDirection.Descending));
+        }
+
         // Keep IsQueueEmpty in sync + track item state changes for the filter view
         DownloadItems.CollectionChanged += DownloadItems_CollectionChanged;
         // 订阅历史记录项的属性变化并计算初始计数

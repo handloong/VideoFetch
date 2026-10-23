@@ -144,7 +144,9 @@ public class DownloadEngine
         //    - fMP4/CMAF segments concatenate into a valid fragmented MP4 → rename
         //    - MPEG-TS → remux with ffmpeg (bundled/PATH); keep .ts if unavailable
         var finalPath = await FinalizeHlsOutputAsync(outputPath, ct);
-        onProgress?.Invoke(100, "Done");
+        // 收尾只报进度，不带"速度"文案：这个字符串会原样显示在队列的
+        // 状态下面（曾经出现过一行英文 "Done"）
+        onProgress?.Invoke(100, string.Empty);
         return finalPath;
     }
 
@@ -462,6 +464,8 @@ public class DownloadEngine
             }
         }
 
-        onProgress?.Invoke(100, "Done");
+        // 收尾只报进度，不带"速度"文案：这个字符串会原样显示在队列的
+        // 状态下面（曾经出现过一行英文 "Done"）
+        onProgress?.Invoke(100, string.Empty);
     }
 }

@@ -108,8 +108,7 @@ internal static class UiSmokeTest
             Console.WriteLine($"  info  results height = {results.ActualHeight:0.#}px");
 
         // 4) render, and make sure we actually drew something
-        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
-        bmp.Render(tab);
+        var bmp = RenderOnThemeBackground(tab, (int)TabWidth, (int)TabHeight);
         var path = Path.Combine(AppContext.BaseDirectory, "ui-smoke-categorytab.png");
         using (var fs = File.Create(path))
         {
@@ -223,8 +222,7 @@ internal static class UiSmokeTest
             FindDescendant<ComboBox>(categoryTab, c => ReferenceEquals(c.ItemsSource, vm.SortOptions)) != null);
 
         // 截图留档（排序控件在列表上方右侧）
-        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
-        bmp.Render(searchTab);
+        var bmp = RenderOnThemeBackground(searchTab, (int)TabWidth, (int)TabHeight);
         var shot = Path.Combine(AppContext.BaseDirectory, "ui-smoke-sort.png");
         using (var fs = File.Create(shot))
         {
@@ -537,8 +535,7 @@ internal static class UiSmokeTest
         ok &= Check("ui-smoke: 默认全部时长", Equals(combo.SelectedValue, DurationFilter.All));
 
         // 截图留档（在改动筛选值之前拍，反映默认状态）
-        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
-        bmp.Render(tab);
+        var bmp = RenderOnThemeBackground(tab, (int)TabWidth, (int)TabHeight);
         var path = Path.Combine(AppContext.BaseDirectory, "ui-smoke-searchtab.png");
         using (var fs = File.Create(path))
         {
@@ -704,8 +701,7 @@ internal static class UiSmokeTest
             completedButtons.Contains(Btn("Btn_DeleteLocalFile")));
 
         // 截图（修复后应该看到 重试 / 删除任务）
-        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
-        bmp.Render(tab);
+        var bmp = RenderOnThemeBackground(tab, (int)TabWidth, (int)TabHeight);
         var path = Path.Combine(AppContext.BaseDirectory, "ui-smoke-queuetab.png");
         using (var fs = File.Create(path))
         {
@@ -779,6 +775,12 @@ internal static class UiSmokeTest
                 FindDescendant<TextBlock>(tab, t => t.Text == "2026-10-23 09:07") != null);
         }
 
+        // 队列按下载时间倒序（最新在最上面）
+        var orderedTimes = list.Items.Cast<DownloadItem>().Select(i => i.DownloadTime).ToList();
+        ok &= Check("ui-smoke: 队列按下载时间倒序",
+            orderedTimes.SequenceEqual(orderedTimes.OrderByDescending(t => t)),
+            string.Join(" | ", orderedTimes.Select(t => t.ToString("HH:mm:ss"))));
+
         // 「重试全部」：失败/已取消的一键重新排队。        // 这里只验证按钮存在、可见、绑到真命令 —— 真按下去会启动真实下载，
         // 队列行为本身由 DownloadQueueTests 的 retry-all 覆盖。
         ok &= Check("ui-smoke: 有失败任务时 FailedCount > 0", vm.FailedCount > 0, vm.FailedCount.ToString());
@@ -800,6 +802,27 @@ internal static class UiSmokeTest
 
         vm.QueueFilter = QueueFilter.All;
         return ok;
+    }
+
+    /// <summary>
+    /// 离屏渲染一个控件。
+    ///
+    /// 必须先铺一层主题底色：UserControl 本身没有 Background，直接渲染出来的
+    /// 背景是透明（A=0），看图时会被合成成白色，深色主题的文字就糊成一片。
+    /// </summary>
+    private static RenderTargetBitmap RenderOnThemeBackground(FrameworkElement element, int width, int height)
+    {
+        var bmp = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+
+        var background = Application.Current.TryFindResource("BgPrimaryBrush") as Brush
+                         ?? new SolidColorBrush(Color.FromRgb(0x12, 0x12, 0x1E));
+        var layer = new DrawingVisual();
+        using (var dc = layer.RenderOpen())
+            dc.DrawRectangle(background, null, new Rect(0, 0, width, height));
+
+        bmp.Render(layer);
+        bmp.Render(element);
+        return bmp;
     }
 
     /// <summary>某一行当前实际可见的按钮文字（按 Visibility 判定，与绑定一致）。</summary>

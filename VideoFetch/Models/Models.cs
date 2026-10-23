@@ -167,6 +167,7 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
         {
             _completedAt = value;
             OnPropertyChanged(nameof(CompletedAt));
+            OnPropertyChanged(nameof(DownloadTime));
             OnPropertyChanged(nameof(DownloadTimeText));
         }
     }
@@ -175,7 +176,13 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     /// 「下载时间」列：下好了显示完成时刻，还在排队/下载中显示入队时刻。
     /// 历史记录（从 SQLite 读回来的）没有 CompletedAt，AddedAt 就是当时的下载时间。
     /// </summary>
-    public string DownloadTimeText => (_completedAt ?? AddedAt).ToString("yyyy-MM-dd HH:mm");
+    public string DownloadTimeText => DownloadTime.ToString("yyyy-MM-dd HH:mm");
+
+    /// <summary>
+    /// 「下载时间」列的排序键。队列视图按它倒序排，最新的在最上面。
+    /// 历史记录没有 CompletedAt，AddedAt 就是当时的下载时间。
+    /// </summary>
+    public DateTime DownloadTime => _completedAt ?? AddedAt;
 
     /// <summary>
     /// Task is still active (queued or downloading). Set false on

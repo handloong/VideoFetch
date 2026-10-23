@@ -467,8 +467,20 @@ internal static class DownloadQueueTests
         fresh.CompletedAt = new DateTime(2026, 10, 23, 21, 5, 0);
         Check("time: 完成后用完成时间",
             fresh.DownloadTimeText == "2026-10-23 21:05", fresh.DownloadTimeText);
+        Check("time: 排序键跟着完成时间走",
+            fresh.DownloadTime == new DateTime(2026, 10, 23, 21, 5, 0), fresh.DownloadTime.ToString("HH:mm"));
 
-        // ⑤ 时长文案改动要通知界面（列是绑定的）
+        // ⑤ 结束后不能留着"速度"文案（曾经把引擎的 "Done" 原样显示在状态下面）
+        using (var h = new Harness())
+        {
+            h.Queue.Enqueue(Info("https://site.test/v/speed", "完成后清速度"), QualityKey);
+            await WaitUntilAsync(() => h.Queue.Items.Count == 1);
+            var item = h.Queue.Items[0];
+            await WaitUntilAsync(() => !item.IsActive);
+            Check("speed: 完成后速度文案清空", item.Speed.Length == 0, $"'{item.Speed}'");
+        }
+
+        // ⑥ 长度文案改动要通知界面（列是绑定的）
         var notified = new List<string>();
         fresh.PropertyChanged += (_, e) => notified.Add(e.PropertyName ?? "");
         fresh.Duration = "10 min";

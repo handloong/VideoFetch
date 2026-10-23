@@ -247,6 +247,7 @@ public class DownloadQueueService
             if (!IsCurrentRun()) return;        // 结果已作废，别去覆写新一轮的状态
             item.OutputPath = finalPath;
             item.Progress = 100;
+            item.Speed = string.Empty;      // 结束时不再有速度，别留着上一次的文案
             item.CompletedAt = DateTime.Now;
             item.State = DownloadState.Completed;
             item.IsCompleted = true;
@@ -298,6 +299,7 @@ public class DownloadQueueService
 
     private static void MarkCancelled(DownloadItem item)
     {
+        item.Speed = string.Empty;
         item.State = DownloadState.Cancelled;
         item.IsCancelled = true;
         item.HasFailed = false;
@@ -307,6 +309,7 @@ public class DownloadQueueService
 
     private static void MarkFailed(DownloadItem item, Exception ex)
     {
+        item.Speed = string.Empty;
         item.State = DownloadState.Failed;
         item.LastError = ex.Message;
         item.HasFailed = true;
