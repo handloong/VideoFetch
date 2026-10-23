@@ -796,6 +796,27 @@ internal static class UiSmokeTest
         ok &= Check("ui-smoke: 队列列表允许纵向滚动",
             ScrollViewer.GetVerticalScrollBarVisibility(list) == ScrollBarVisibility.Auto);
 
+        // 窗口变窄时横向滚动条要真的铺开。主题里曾把 ScrollBar 的 Width 锁成 6，
+        // 横向的那条就被压成一个小白块，既看不见也拖不动。
+        var narrow = new QueueTab { DataContext = vm };
+        narrow.Measure(new Size(640, 420));
+        narrow.Arrange(new Rect(0, 0, 640, 420));
+        narrow.UpdateLayout();
+        var hbar = FindDescendant<ScrollBar>(narrow,
+            sb => sb.Orientation == Orientation.Horizontal && sb.Visibility == Visibility.Visible);
+        ok &= Check("ui-smoke: 横向滚动条铺开而不是挤成方块",
+            hbar != null && hbar.ActualWidth > 200,
+            hbar == null ? "没找到横向滚动条" : $"{hbar.ActualWidth:0}x{hbar.ActualHeight:0}");
+
+        var narrowBmp = RenderOnThemeBackground(narrow, 640, 420);
+        var narrowPath = Path.Combine(AppContext.BaseDirectory, "ui-smoke-narrow.png");
+        using (var fs = File.Create(narrowPath))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(narrowBmp));
+            encoder.Save(fs);
+        }
+
         // 单元格真的渲染出了内容（只断言列头，绑定断了也发现不了）
         var completedRow = vm.DownloadItems.FirstOrDefault(i => i.IsCompleted);
         if (completedRow != null)
@@ -842,6 +863,7 @@ internal static class UiSmokeTest
         vm.QueueFilter = QueueFilter.All;
         return ok;
     }
+
 
 
     /// <summary>

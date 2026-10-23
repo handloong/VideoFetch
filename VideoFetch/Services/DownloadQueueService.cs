@@ -328,7 +328,6 @@ public class DownloadQueueService
             item.HasFailed = false;
             item.IsCancelled = false;
             item.IsDownloading = false;
-            SavePending();      // 完成了，从待续清单里移除
 
             // 下载完成后记录到SQLite（仅在文件保存成功后）
             try
@@ -345,6 +344,10 @@ public class DownloadQueueService
             // 最后才清掉“活跃”：界面以 IsActive=false 作为任务结束的信号，
             // 先置位会让去重记录还没写好的瞬间被当成已完成，用户能立刻重复入队。
             item.IsActive = false;
+
+            // 必须放在 IsActive=false 之后：SavePending 按 IsActive 记 WasActive，
+            // 提前写会把刚下完的任务当成"还在下载"，下次启动又下一遍。
+            SavePending();
 
             if (_settings.AutoOpenFolder)
                 System.Diagnostics.Process.Start("explorer.exe",
