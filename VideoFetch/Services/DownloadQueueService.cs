@@ -442,16 +442,31 @@ public class DownloadQueueService
         return safe.Length > 120 ? safe[..120] : safe;
     }
 
-    private static string EnsureUniquePath(string path)
+    /// <summary>
+    /// 找一个可用文件名：既不能已存在于磁盘，也不能被队列里其它任务占着。
+    ///
+    /// 只查磁盘不够 —— 文件要等下载开始才创建，同一批里两个同名视频（这些站点
+    /// 标题重复率很高）会拿到同一个路径：并行时第二个 FileShare.None 打开失败，
+    /// 串行时后一个直接覆盖前一个。
+    /// </summary>
+    private string EnsureUniquePath(string path)
+        => EnsureUniquePath(path, Items.Select(i => i.OutputPath));
+
+    private static string EnsureUniquePath(string path, IEnumerable<string> reservedPaths)
     {
-        if (!File.Exists(path)) return path;
+        var taken = new HashSet<string>(
+            reservedPaths.Where(p => !string.IsNullOrEmpty(p)),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (!File.Exists(path) && !taken.Contains(path)) return path;
+
         var dir = Path.GetDirectoryName(path)!;
         var name = Path.GetFileNameWithoutExtension(path);
         var ext = Path.GetExtension(path);
         for (int i = 1; i < 1000; i++)
         {
             var candidate = Path.Combine(dir, $"{name} ({i}){ext}");
-            if (!File.Exists(candidate)) return candidate;
+            if (!File.Exists(candidate) && !taken.Contains(candidate)) return candidate;
         }
         return path;
     }

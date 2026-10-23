@@ -32,6 +32,7 @@ internal static class DownloadQueueTests
 
         await Safe("enqueue", EnqueueCompletesAsync);
         await Safe("dedup", DuplicateEnqueueRejectedAsync);
+        await Safe("same-title", SameTitleGetsDistinctPathsAsync);
         await Safe("concurrency", ConcurrencyLimitAsync);
         await Safe("failure", FailureIsRecordedAsync);
         await Safe("cancel-failed", CancelOnFailedIsRefusedAsync);
@@ -110,6 +111,40 @@ internal static class DownloadQueueTests
 
         gate.ReleaseAll();
         await WaitUntilAsync(() => h.Queue.Items.All(i => !i.IsActive));
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  2b. 同名视频不能写同一个文件（Critical-1）
+    // ══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// 这些站点标题重复率极高（"Amateur wife sucks cock" 一大把）。文件名取自
+    /// 标题，如果只判断磁盘上有没有同名文件，同一批里两个同名视频会拿到同一个
+    /// 路径：并行时第二个 FileShare.None 打开失败，串行时后一个覆盖前一个。
+    /// </summary>
+    private static async Task SameTitleGetsDistinctPathsAsync()
+    {
+        using var h = new Harness(maxConcurrent: 2);
+        var gate = h.HoldRunner();
+
+        const string title = "Amateur wife sucks cock";
+        h.Queue.Enqueue(Info("https://site.test/v/same-1", title), QualityKey);
+        h.Queue.Enqueue(Info("https://site.test/v/same-2", title), QualityKey);
+        await WaitUntilAsync(() => h.Queue.Items.Count == 2);
+
+        var paths = h.Queue.Items.Select(i => i.OutputPath).ToList();
+        Console.WriteLine($"        PROBE {paths[0]}");
+        Console.WriteLine($"        PROBE {paths[1]}");
+        Check("same-title: 两个任务的输出路径不同",
+            !string.Equals(paths[0], paths[1], StringComparison.OrdinalIgnoreCase));
+
+        gate.ReleaseAll();
+        await WaitUntilAsync(() => h.Queue.Items.All(i => !i.IsActive), 15000);
+
+        Check("same-title: 两个任务都下载成功",
+            h.Queue.Items.Count(i => i.IsCompleted) == 2);
+        Check("same-title: 两个文件都在磁盘上",
+            h.Queue.Items.All(i => File.Exists(i.OutputPath)));
     }
 
     // ══════════════════════════════════════════════════════════
