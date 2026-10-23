@@ -162,6 +162,23 @@ internal static class UiSmokeTest
         // 10) 设置页的 Cookie 导入
         ok &= CheckCookieSettings(vm);
 
+        // 10b) 主窗口默认尺寸：黄金比 + 比原来更大
+        try
+        {
+            var win = new MainWindow();
+            var ratio = win.Width / win.Height;
+            ok &= Check("main-window: 默认尺寸按黄金比", Math.Abs(ratio - 1.618) < 0.01,
+                $"{win.Width}x{win.Height} ratio={ratio:0.000}");
+            ok &= Check("main-window: 比原来的 1000x700 更大", win.Width > 1000 && win.Height > 700,
+                $"{win.Width}x{win.Height}");
+            win.Close();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("  info  MainWindow 构造失败（跳过尺寸断言）: " + ex.Message);
+            ok &= Check("main-window: 默认尺寸按黄金比", false, ex.Message);
+        }
+
         // 11) UI 巡检：多尺寸下找裁切/零尺寸/越界/重叠/对比度问题
         // 有发现即算失败 —— 逼着每次新增界面元素都把布局/对比度当回事
         ok &= Check("ui-smoke: UI 巡检（多尺寸布局与对比度）无问题", UiAudit.Run(vm) == 0);

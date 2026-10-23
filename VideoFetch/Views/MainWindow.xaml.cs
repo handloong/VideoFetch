@@ -30,6 +30,13 @@ public partial class MainWindow : Window
         }
         Services.LanguageService.SwitchLanguage(culture);
 
+        // 默认 1280x791（黄金比）。屏幕装不下时等比缩小，别让窗口超出工作区。
+        var work = SystemParameters.WorkArea;
+        var size = Services.WindowSizing.Fit(
+            Services.WindowSizing.DefaultWidth, work.Width, work.Height, MinWidth);
+        Width = size.Width;
+        Height = size.Height;
+
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) CloseImagePreview(); };
     }
 

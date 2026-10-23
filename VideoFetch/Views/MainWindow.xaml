@@ -5,8 +5,8 @@
         xmlns:views="clr-namespace:VideoFetch.Views"
         xmlns:conv="clr-namespace:VideoFetch.Converters"
         Title="{DynamicResource AppTitle}"
-        Width="1000" Height="700"
-        MinWidth="880" MinHeight="580"
+        Width="1280" Height="791"
+        MinWidth="960" MinHeight="594"
         WindowStartupLocation="CenterScreen"
         Style="{StaticResource BaseWindowStyle}"
         x:Name="mainWindow">
