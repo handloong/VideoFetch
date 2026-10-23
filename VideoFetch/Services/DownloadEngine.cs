@@ -21,11 +21,62 @@ namespace VideoFetch.Services;
 /// </summary>
 public class DownloadEngine
 {
+    /// <summary>HLS 里的一个分段。Offset/Length 为 0 表示"整文件"（普通 TS 列表）。</summary>
+    public sealed record HlsSegment(string Url, long Offset, long Length);
+
     private readonly int _maxSegmentThreads;
 
     public DownloadEngine(int maxSegmentThreads = 8)
     {
         _maxSegmentThreads = Math.Max(1, maxSegmentThreads);
+    }
+
+    /// <summary>
+    /// 两次收到数据之间允许的最长间隔。下载客户端刻意设成无限超时（大文件不能
+    /// 被总时长掐断），但如果 CDN 半死（握手完成、不再发数据），任务会永远卡在
+    /// IsActive、占着并发名额不放，只能靠用户手点取消 —— 所以补一个"读空闲超时"。
+    /// </summary>
+    public static TimeSpan ReadIdleTimeout { get; set; } = TimeSpan.FromSeconds(45);
+
+    /// <summary>
+    /// 读一次数据，超过 <paramref name="idleTimeout"/> 没动静就抛 TimeoutException。
+    /// 取消（ct 真的被取消）仍然走 OperationCanceledException，两者不能混。
+    /// </summary>
+    public static async Task<int> ReadWithIdleTimeoutAsync(
+        Stream stream, Memory<byte> buffer, CancellationToken ct, TimeSpan? idleTimeout = null)
+    {
+        var timeout = idleTimeout ?? ReadIdleTimeout;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+
+        try
+        {
+            return await stream.ReadAsync(buffer, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"{timeout.TotalSeconds:0} 秒没有收到数据，连接可能已经断开");
+        }
+    }
+
+    /// <summary>
+    /// 拒绝 "200 + HTML 错误页"：token 过期/登录墙时站点常返回 200 的提示页，
+    /// 以前会存成几 KB 的"视频"并写进去重记录，用户之后再也下不到正确文件。
+    /// </summary>
+    public static void EnsureLooksLikeMedia(HttpResponseMessage response)
+    {
+        response.EnsureSuccessStatusCode();
+
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (string.IsNullOrEmpty(mediaType)) return;   // 有些 CDN 不返回类型，放行
+
+        if (mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+            mediaType.Contains("json", StringComparison.OrdinalIgnoreCase) ||
+            mediaType.Contains("xml", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"服务器返回的是 {mediaType} 而不是视频（可能是登录失效或错误页）");
+        }
     }
 
     /// <summary>
@@ -102,13 +153,13 @@ public class DownloadEngine
             throw new NotSupportedException("该视频使用 AES-128 加密（#EXT-X-KEY），当前版本暂不支持");
 
         // 3. Parse segment URLs
-        var segments = ParseSegments(m3u8Content, baseUri);
+        var segments = ParseSegmentInfos(m3u8Content, baseUri);
         if (segments.Count == 0)
             throw new InvalidDataException("No segments found in M3U8 playlist.");
 
         // fMP4/CMAF 需要先拼接初始化段（#EXT-X-MAP），否则整段都不解码
         var initSegment = ParseInitSegment(m3u8Content, baseUri);
-        if (initSegment != null) segments.Insert(0, initSegment);
+        if (initSegment != null) segments.Insert(0, new HlsSegment(initSegment, 0, 0));
 
         // 3. Prepare temp directory for segments
         var tempDir = Path.Combine(Path.GetTempPath(), "videofetch_" + Guid.NewGuid().ToString("N")[..8]);
@@ -120,13 +171,13 @@ public class DownloadEngine
             int total = segments.Count;
 
             using var semaphore = new SemaphoreSlim(_maxSegmentThreads);
-            var downloadTasks = segments.Select(async (segUrl, index) =>
+            var downloadTasks = segments.Select(async (seg, index) =>
             {
                 await semaphore.WaitAsync(ct);
                 try
                 {
                     var segPath = Path.Combine(tempDir, $"seg_{index:D6}.ts");
-                    await DownloadSegmentWithRetryAsync(client, segUrl, pageUrl, segPath, ct);
+                    await DownloadSegmentWithRetryAsync(client, seg, pageUrl, segPath, ct);
 
                     var done = Interlocked.Increment(ref completed);
                     var percent = (double)done / total * 100.0;
@@ -286,10 +337,11 @@ public class DownloadEngine
         if (string.IsNullOrEmpty(pageUrl))
             return await client.GetStringAsync(url, ct);
 
-        var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Add("Referer", pageUrl);
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        // 用 TryAdd 而不是 Add：pageUrl 含非 ASCII（带中文的 key）时 Add 会抛 FormatException
+        req.Headers.TryAddWithoutValidation("Referer", pageUrl);
         // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
-        var resp = await client.SendAsync(req, ct);
+        using var resp = await client.SendAsync(req, ct);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadAsStringAsync(ct);
     }
@@ -331,15 +383,66 @@ public class DownloadEngine
     /// 公开是为了让离线测试能直接喂一段 m3u8 文本。
     /// </summary>
     public static List<string> ParseSegments(string m3u8, Uri baseUri)
+        => ParseSegmentInfos(m3u8, baseUri).Select(s => s.Url).ToList();
+
+    /// <summary>
+    /// 解析媒体播放列表，保留 #EXT-X-BYTERANGE 的 (offset, length)。
+    ///
+    /// 以前只收集 URL 行、把 BYTERANGE 当注释丢掉：用字节范围描述的 fMP4/CMAF
+    /// 列表里同一个 URI 会出现多次，每次都下整文件，拼出来必然花屏。
+    /// </summary>
+    public static List<HlsSegment> ParseSegmentInfos(string m3u8, Uri baseUri)
     {
-        var segments = new List<string>();
+        var segments = new List<HlsSegment>();
+        long pendingLength = -1;
+        long pendingOffset = -1;
+        string? lastUrl = null;
+        long lastEnd = 0;
+
         foreach (var raw in m3u8.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var line = raw.Trim();
-            if (line.StartsWith("#") || string.IsNullOrEmpty(line)) continue;
-            var url = line.StartsWith("http") ? line : new Uri(baseUri, line).ToString();
-            segments.Add(url);
+            if (line.Length == 0) continue;
+
+            if (line.StartsWith("#EXT-X-BYTERANGE", StringComparison.OrdinalIgnoreCase))
+            {
+                // 形如 #EXT-X-BYTERANGE:1000@0；省略 @offset 表示"接上一段末尾"
+                var range = Regex.Match(line, @":(\d+)(?:@(\d+))?");
+                if (range.Success)
+                {
+                    pendingLength = long.Parse(range.Groups[1].Value);
+                    pendingOffset = range.Groups[2].Success
+                        ? long.Parse(range.Groups[2].Value)
+                        : -1;
+                }
+                continue;
+            }
+
+            if (line.StartsWith("#", StringComparison.Ordinal)) continue;
+
+            var url = line.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? line
+                : new Uri(baseUri, line).ToString();
+
+            if (pendingLength >= 0)
+            {
+                var offset = pendingOffset >= 0
+                    ? pendingOffset
+                    : (string.Equals(lastUrl, url, StringComparison.Ordinal) ? lastEnd : 0);
+
+                segments.Add(new HlsSegment(url, offset, pendingLength));
+                lastEnd = offset + pendingLength;
+                lastUrl = url;
+                pendingLength = -1;
+                pendingOffset = -1;
+                continue;
+            }
+
+            segments.Add(new HlsSegment(url, 0, 0));
+            lastUrl = url;
+            lastEnd = 0;
         }
+
         return segments;
     }
 
@@ -368,35 +471,51 @@ public class DownloadEngine
         => Regex.IsMatch(m3u8, @"#EXT-X-KEY:\s*METHOD=(?!NONE)[A-Z0-9\-]+", RegexOptions.IgnoreCase);
 
     private static async Task DownloadSegmentWithRetryAsync(
-        HttpClient client, string url, string pageUrl, string path, CancellationToken ct, int retries = 3)
+        HttpClient client, HlsSegment segment, string pageUrl, string path,
+        CancellationToken ct, int retries = 3)
     {
         for (int attempt = 0; attempt < retries; attempt++)
         {
             try
             {
-                byte[] bytes;
+                // 单段也要有超时：否则一个卡死的分段会让 Task.WhenAll 永远等下去
+                using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                attemptCts.CancelAfter(SegmentTimeout);
+
+                using var req = new HttpRequestMessage(HttpMethod.Get, segment.Url);
                 if (!string.IsNullOrEmpty(pageUrl))
-                {
-                    var req = new HttpRequestMessage(HttpMethod.Get, url);
-                    req.Headers.Add("Referer", pageUrl);
-                    // Cookie 走 HttpClientFactory 的 CookieContainer（含用户导入的），不要在请求头上硬写
-                    var resp = await client.SendAsync(req, ct);
-                    resp.EnsureSuccessStatusCode();
-                    bytes = await resp.Content.ReadAsByteArrayAsync(ct);
-                }
-                else
-                {
-                    bytes = await client.GetByteArrayAsync(url, ct);
-                }
+                    req.Headers.TryAddWithoutValidation("Referer", pageUrl);
+
+                // 字节范围分段：不带 Range 就会把整个文件当一个分段重复下载
+                if (segment.Length > 0)
+                    req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(
+                        segment.Offset, segment.Offset + segment.Length - 1);
+
+                using var resp = await client.SendAsync(req, attemptCts.Token);
+                EnsureLooksLikeMedia(resp);
+                var bytes = await resp.Content.ReadAsByteArrayAsync(attemptCts.Token);
+
+                // 服务端忽略了 Range（返回整文件）时不要写脏数据
+                if (segment.Length > 0 && bytes.LongLength > segment.Length)
+                    throw new InvalidDataException(
+                        $"分段返回 {bytes.LongLength} 字节，超过请求的范围 {segment.Length}");
+
                 await File.WriteAllBytesAsync(path, bytes, ct);
                 return;
             }
-            catch when (attempt < retries - 1 && !ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;   // 用户取消：不要再重试
+            }
+            catch when (attempt < retries - 1)
             {
                 await Task.Delay(500 * (attempt + 1), ct);
             }
         }
     }
+
+    /// <summary>单个分段的超时（含建连与传输）。</summary>
+    private static readonly TimeSpan SegmentTimeout = TimeSpan.FromSeconds(60);
 
     private static async Task ConcatenateSegmentsAsync(
         string tempDir, int totalSegments, string outputPath, CancellationToken ct)
@@ -442,7 +561,7 @@ public class DownloadEngine
             ? await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct)
             : await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct))
         {
-            response.EnsureSuccessStatusCode();
+            EnsureLooksLikeMedia(response);
 
             var totalBytes = response.Content.Headers.ContentLength ?? -1;
             await using var stream = await response.Content.ReadAsStreamAsync(ct);
@@ -455,7 +574,7 @@ public class DownloadEngine
             var sw = Stopwatch.StartNew();
             long lastBytes = 0;
 
-            while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+            while ((read = await ReadWithIdleTimeoutAsync(stream, buffer, ct)) > 0)
             {
                 await output.WriteAsync(buffer.AsMemory(0, read), ct);
                 downloaded += read;

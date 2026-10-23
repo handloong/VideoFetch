@@ -27,6 +27,9 @@ public partial class CategoryTab : UserControl
 
     private void CategoryResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        // 双击表头/空白/滚动条不该当成「打开这一行」
+        if (!RowHitTest.IsRow(e.OriginalSource)) return;
+
         if (sender is not ListView lv || lv.SelectedItem is not SearchResult result) return;
 
         var mainWindow = Window.GetWindow(this) as MainWindow;

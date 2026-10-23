@@ -147,6 +147,9 @@ internal static class UiSmokeTest
         // 8a) 设置落盘、CanExecute、切站点清结果、已下载标记通知
         ok &= CheckSettingsAndStateSync(vm);
 
+        // 8a2) 语言切换 + 批量工具栏可见性
+        ok &= CheckLanguageAndToolbar(vm);
+
         // 8b) 结果列表：Ctrl 点选 / Shift 连选 等同勾选
         ok &= CheckResultRowSelection(vm);
 
@@ -259,6 +262,44 @@ internal static class UiSmokeTest
         // 复位，避免把测试数据写进配置
         vm.ResultSort = ResultSort.Default;
         vm.SearchResults.Clear();
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 语言切换后，ViewModel 里那些"字符串快照"要跟着变；批量工具栏在结果被清空后
+    /// 也不能消失（批量还在后台跑，取消按钮得在）。
+    /// </summary>
+    private static bool CheckLanguageAndToolbar(MainViewModel vm)
+    {
+        var ok = true;
+
+        var zhDuration = vm.DurationOptions[0].Label;
+        var zhSort = vm.SortOptions[0].Label;
+
+        LanguageService.SwitchLanguage("en-US");
+        ok &= Check("lang: 时长选项跟随语言",
+            vm.DurationOptions[0].Label == Res("Dur_All") && vm.DurationOptions[0].Label != zhDuration,
+            vm.DurationOptions[0].Label);
+        ok &= Check("lang: 排序选项跟随语言",
+            vm.SortOptions[0].Label == Res("Sort_Default") && vm.SortOptions[0].Label != zhSort,
+            vm.SortOptions[0].Label);
+        ok &= Check("lang: 队列筛选文案跟随语言",
+            vm.FilterAllText == string.Format(Res("Queue_Filter_All"), vm.DownloadItems.Count - vm.TrashCount),
+            vm.FilterAllText);
+
+        LanguageService.SwitchLanguage("zh-CN");
+        ok &= Check("lang: 切回中文后文案恢复",
+            vm.DurationOptions[0].Label == Res("Dur_All") && vm.DurationOptions[0].Label == zhDuration,
+            vm.DurationOptions[0].Label);
+
+        // 批量工具栏：结果被清空但批量还在跑时必须显示
+        vm.SearchResults.Clear();
+        vm.IsBatchDownloading = true;
+        ok &= Check("toolbar: 批量进行中即使没有结果也显示", vm.ShowBatchToolbar);
+
+        vm.IsBatchDownloading = false;
+        ok &= Check("toolbar: 批量结束后且无结果则隐藏", !vm.ShowBatchToolbar);
 
         return ok;
     }
@@ -478,10 +519,28 @@ internal static class UiSmokeTest
         ClickHeader(list, Res("Queue_Header_Actions"));
         ok &= Check("queue: 非排序列点了不变", vm.QueueSortKey == QueueSortKey.Title);
 
-        // ── 多选删除文件 ──
-        vm.UpdateQueueSelection(new[] { a, b, c });
+        // ── 多选删除文件（走 ListView 的选中，和用户操作一致） ──
+        list.SelectedItems.Clear();
+        list.SelectedItems.Add(a);
+        list.SelectedItems.Add(b);
+        list.SelectedItems.Add(c);
         ok &= Check("queue: 选中 3 个已完成任务", vm.DeletableSelectionCount == 3,
             vm.DeletableSelectionCount.ToString());
+
+        // RefreshQueueStats 会 Refresh 视图（发 Reset），选区不能被清掉 ——
+        // 否则"多选删文件"的按钮会在别的任务完成时闪一下消失
+        c.State = DownloadState.Completed;      // 触发一次状态刷新
+        tab.UpdateLayout();
+        ok &= Check("queue: 视图刷新后多选不丢", vm.DeletableSelectionCount == 3,
+            vm.DeletableSelectionCount.ToString());
+        ok &= Check("queue: ListView 里仍然选中 3 行", list.SelectedItems.Count == 3,
+            list.SelectedItems.Count.ToString());
+
+        // 双击表头/空白不应该被当成"打开这一行"
+        var anyHeader = FindDescendant<GridViewColumnHeader>(list, _ => true);
+        ok &= Check("queue: 表头不算行命中", anyHeader == null || !RowHitTest.IsRow(anyHeader));
+        var rowContainer = list.ItemContainerGenerator.ContainerFromIndex(0) as ListViewItem;
+        ok &= Check("queue: 行容器算行命中", rowContainer != null && RowHitTest.IsRow(rowContainer));
 
         vm.UpdateQueueSelection(new[] { a, b, failed });
         ok &= Check("queue: 失败任务不计入可删", vm.DeletableSelectionCount == 2,

@@ -41,6 +41,7 @@ internal static class DownloadQueueTests
         await Safe("cancel-note", CancelClearsNoteAsync);
         await Safe("autoopen-fails", AutoOpenFailureKeepsResultAsync);
         await Safe("pending", PendingAsync);
+        await Safe("restore-keeps-file", RestoreKeepsCompleteFileAsync);
         await Safe("resume", ResumeAfterRestartAsync);
         await Safe("failure", FailureIsRecordedAsync);
         await Safe("cancel-failed", CancelOnFailedIsRefusedAsync);
@@ -251,7 +252,14 @@ internal static class DownloadQueueTests
 
         gate.ReleaseAll();
         await WaitUntilAsync(() => h.Queue.Items.All(i => !i.IsActive), 15000);
-        Check("pending: 完成后从清单移除", store.Load().Count == 0, store.Load().Count.ToString());
+        // IsActive=false 与 SavePending 之间有一瞬间：等清单落定再断言
+        var emptied = false;
+        for (var i = 0; i < 40 && !emptied; i++)
+        {
+            emptied = store.Load().Count == 0;
+            if (!emptied) await Task.Delay(50);
+        }
+        Check("pending: 完成后从清单移除", emptied, store.Load().Count.ToString());
 
         // 清单被写坏（断电/手改）时不能让程序起不来
         File.WriteAllText(Path.Combine(h.PendingDir, "queue.json"), "{ 这不是合法 JSON");
@@ -269,6 +277,48 @@ internal static class DownloadQueueTests
         h2.Queue.DeleteToTrash(failed);
         Check("pending: 进回收站后从清单移除", new PendingQueueStore().Load().Count == 0,
             new PendingQueueStore().Load().Count.ToString());
+    }
+
+    /// <summary>
+    /// 恢复待续任务时只删"会被追加写入"的 HLS 半成品（.ts/.m4s）。
+    ///
+    /// 以前是无条件删除：如果断电/杀进程恰好发生在"文件已下完、下载记录还没写"
+    /// 的那个窗口里，用户下好的成品会被删掉重下。
+    /// </summary>
+    private static async Task RestoreKeepsCompleteFileAsync()
+    {
+        using var h = new Harness();
+        var gate = h.HoldRunner();   // 让恢复出来的任务卡住，方便断言文件状态
+
+        var mp4 = Path.Combine(h.Root, "finished.mp4");
+        var ts = Path.Combine(h.Root, "partial.ts");
+        await File.WriteAllTextAsync(mp4, "complete file");
+        await File.WriteAllTextAsync(ts, "half");
+
+        new PendingQueueStore().Save(new[]
+        {
+            new DownloadItem
+            {
+                Url = "https://site.test/v/keep", Title = "完整文件",
+                OutputPath = mp4, State = DownloadState.Queued, IsActive = true
+            },
+            new DownloadItem
+            {
+                Url = "https://site.test/v/drop", Title = "半截 ts",
+                OutputPath = ts, State = DownloadState.Queued, IsActive = true
+            }
+        });
+
+        // 重启：同一个清单目录、同一个库
+        var queue = new DownloadQueueService(h.Settings, h.Records, h.Provider,
+            () => h.Runner, new ImmediateDispatcher());
+
+        Check("restore: 完整 mp4 不会被删", File.Exists(mp4), mp4);
+        Check("restore: HLS 半成品 ts 被清掉", !File.Exists(ts), ts);
+        Check("restore: 两个任务都回来了", queue.Items.Count == 2, queue.Items.Count.ToString());
+
+        gate.ReleaseAll();
+        await WaitUntilAsync(() => queue.Items.All(i => !i.IsActive), 15000);
     }
 
     /// <summary>

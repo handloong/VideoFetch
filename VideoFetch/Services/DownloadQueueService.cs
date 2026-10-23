@@ -121,8 +121,40 @@ public class DownloadQueueService
         }
     }
 
-    /// <summary>把当前未完成的任务写进清单（很小的一份 JSON，直接同步写）。</summary>
-    private void SavePending() => _pendingStore.Save(Items);
+    /// <summary>
+    /// 把当前未完成的任务写进清单。
+    ///
+    /// 快照必须在 UI 线程上拍：完成/失败回调可能来自下载线程，此时 UI 线程
+    /// 可能正在 Add/Remove，直接枚举 ObservableCollection 会抛
+    /// InvalidOperationException，而 Save 内部只记日志 —— 结果是清单静默停在旧内容。
+    /// </summary>
+    private void SavePending()
+    {
+        List<DownloadItem>? snapshot = null;
+        try
+        {
+            // IUiDispatcher.Invoke 是 void，用局部变量接结果
+            _ui.Invoke(() => snapshot = Items.ToList());
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"保存待续清单失败（取快照时）: {ex.Message}");
+            return;
+        }
+
+        if (snapshot == null) return;
+        _pendingStore.Save(snapshot);
+    }
+
+    /// <summary>输出文件是否是"会被追加写入"的 HLS 半成品（.ts/.m4s）。</summary>
+    private static bool IsPartialHlsFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var ext = Path.GetExtension(path);
+        return ext.Equals(".ts", StringComparison.OrdinalIgnoreCase)
+               || ext.Equals(".m4s", StringComparison.OrdinalIgnoreCase)
+               || ext.Equals(".aac", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// 把上次退出时没完成的任务放回队列。
@@ -157,8 +189,14 @@ public class DownloadQueueService
 
             if (task.WasActive)
             {
-                // 上次的残缺文件必须删掉：.ts 直接拼接，残留会让结果坏掉
-                try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
+                // 只删"确实可能是半截"的文件：HLS 的 .ts 是追加拼接的，残留会让
+                // 结果坏掉；而直连下载用 FileMode.Create 覆盖，留着也没关系。
+                // 以前无条件删，碰上"文件已下完、下载记录还没写"的窗口
+                // （断电/杀进程）就会把用户下好的成品删掉重下。
+                if (IsPartialHlsFile(item.OutputPath))
+                {
+                    try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
+                }
 
                 item.Progress = 0;
                 item.State = DownloadState.Queued;

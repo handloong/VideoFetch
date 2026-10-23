@@ -89,7 +89,7 @@
             <Border Grid.Row="0" Background="{StaticResource BgTertiaryBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                     Padding="8,5"
-                    Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding ShowBatchToolbar, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>

@@ -155,6 +155,18 @@ public partial class MainViewModel : ObservableObject
         UpdateIndices(list);
     }
 
+    /// <summary>
+    /// 批量工具栏是否可见。不能只看 HasSearchResults：批量下载进行中再点一次搜索会
+    /// 清空 SearchResults，取消按钮和进度条会一起消失，而批量任务还在后台跑。
+    /// </summary>
+    public bool ShowBatchToolbar => HasSearchResults || IsBatchDownloading;
+
+    partial void OnHasSearchResultsChanged(bool value)
+        => OnPropertyChanged(nameof(ShowBatchToolbar));
+
+    partial void OnIsBatchDownloadingChanged(bool value)
+        => OnPropertyChanged(nameof(ShowBatchToolbar));
+
     // ── 下载队列：排序 ──────────────────────────────────────────────────
 
     private QueueSortKey _queueSortKey = QueueSortKey.DownloadTime;
@@ -230,6 +242,9 @@ public partial class MainViewModel : ObservableObject
 
     private readonly List<DownloadItem> _queueSelection = new();
 
+    /// <summary>当前队列里被选中的行（ListView 的 SelectedItems 不能双向绑定，这里存一份）。</summary>
+    public IReadOnlyList<DownloadItem> QueueSelection => _queueSelection;
+
     /// <summary>当前选中的、可以删除本地文件的任务数（驱动批量删除按钮）。</summary>
     [ObservableProperty]
     private int _deletableSelectionCount;
@@ -265,6 +280,37 @@ public partial class MainViewModel : ObservableObject
         UpdateQueueSelection(_queueSelection.ToList());
         RefreshQueueStats();
         RefreshSearchMarks();
+    }
+
+    /// <summary>
+    /// 语言切换后重建所有"字符串快照"（下拉项、筛选药丸、按钮文案、排序提示）。
+    /// DynamicResource 绑定的部分会自动跟随，这里只处理代码里生成过的字符串。
+    /// </summary>
+    private void RefreshLocalizedTexts()
+    {
+        var duration = DurationFilter;
+        DurationOptions.Clear();
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_All"), DurationFilter.All));
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Short"), DurationFilter.Short));
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Medium"), DurationFilter.Medium));
+        DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Long"), DurationFilter.Long));
+        DurationFilter = duration;
+
+        var sort = ResultSort;
+        SortOptions.Clear();
+        SortOptions.Add(new SortOption(LanguageService.GetString("Sort_Default"), ResultSort.Default));
+        SortOptions.Add(new SortOption(LanguageService.GetString("Sort_DurationDesc"), ResultSort.DurationDesc));
+        SortOptions.Add(new SortOption(LanguageService.GetString("Sort_DurationAsc"), ResultSort.DurationAsc));
+        ResultSort = sort;
+
+        // 队列行的状态文案是每次 get 时按当前语言算的，但要有人通知界面才会重读
+        foreach (var item in _queue.Items) item.RefreshStatusText();
+
+        OnPropertyChanged(nameof(QueueSortLabel));
+        OnPropertyChanged(nameof(DeleteFilesText));
+        UpdateSelectedCount();
+        UpdateCategorySelectedCount();
+        RefreshQueueStats();
     }
 
     /// <summary>
@@ -421,6 +467,11 @@ public partial class MainViewModel : ObservableObject
 
         // 应用代理设置（解析器/下载引擎共享同一个 handler）
         HttpClientFactory.Configure(EffectiveProxyUrl(), Settings.SiteCookies);
+
+        // 切换语言时重建 VM 里那些字符串快照：ViewModel 是在 XAML 里构造的，
+        // 构造发生在 SwitchLanguage 之前，DurationOptions/Filter*Text/批量按钮文案
+        // 都是那一刻的 GetString 结果 —— 不重建的话界面会中英混排。
+        LanguageService.LanguageChanged += RefreshLocalizedTexts;
 
         // Keep HasSearchResults in sync with SearchResults collection
         // Also update 1-based indices for display

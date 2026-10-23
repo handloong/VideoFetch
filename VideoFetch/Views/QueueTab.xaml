@@ -106,7 +106,7 @@
 
         <!-- Download list -->
         <Grid Grid.Row="1">
-            <ListView ItemsSource="{Binding QueueItemsView}"
+            <ListView x:Name="QueueList" ItemsSource="{Binding QueueItemsView}"
                       Background="Transparent" BorderThickness="0"
                       ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
                       MouseDoubleClick="QueueList_MouseDoubleClick"

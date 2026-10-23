@@ -10,7 +10,12 @@ namespace VideoFetch.Services;
 /// </summary>
 public static class LanguageService
 {
-    private const string ResourcePath = "VideoFetch.Strings.Strings.";
+    /// <summary>
+    /// 必须是**绝对 pack URI**。原来写的是 "VideoFetch.Strings.Strings." + 相对 URI，
+    /// 解析出来是 pack://application:,,,/VideoFetch.Strings.Strings.en-US.xaml —— 这个
+    /// 资源根本不存在，SwitchLanguage 每次都静默返回 false（语言其实从没切成功过）。
+    /// </summary>
+    private const string ResourcePath = "pack://application:,,,/VideoFetch;component/Strings/Strings.";
 
     /// <summary>Currently active culture code, e.g. "en-US" or "zh-CN"</summary>
     public static string CurrentLanguage { get; private set; } = "zh-CN";
@@ -34,7 +39,7 @@ public static class LanguageService
         try
         {
             // Try loading the new dictionary
-            var dictUri = new Uri($"{ResourcePath}{cultureCode}.xaml", UriKind.Relative);
+            var dictUri = new Uri($"{ResourcePath}{cultureCode}.xaml", UriKind.Absolute);
             ResourceDictionary? newDict = null;
             try
             {
