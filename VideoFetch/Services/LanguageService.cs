@@ -76,7 +76,8 @@ public static class LanguageService
     /// </summary>
     public static string GetString(string key)
     {
-        return Application.Current.TryFindResource(key) as string ?? $"[{key}]";
+        // Application.Current 为 null 的场景确实存在：测试宿主、以及极早期启动阶段。
+        return Application.Current?.TryFindResource(key) as string ?? $"[{key}]";
     }
 
     /// <summary>

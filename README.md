@@ -67,10 +67,10 @@ dotnet publish VideoFetch/VideoFetch.csproj -c Release -r win-x64 --self-contain
 
 ### 测试
 
-`VideoFetch.Test` 里是分类解析的回归测试（HTML 夹具取自站点真实页面，无需联网）：
+`VideoFetch.Test` 里是回归测试，离线部分完全不联网（HTML 夹具取自站点真实页面，下载队列跑在假实现上）：
 
 ```bash
-# 离线：分类解析 + 去重/清洗 + CategoryTab 布局冒烟（输出截图 ui-smoke-categorytab.png）
+# 离线：分类解析 + 下载队列状态机 + 两个页面的布局冒烟（ui-smoke-*.png）
 dotnet run --project VideoFetch.Test
 
 # 联网：抓真实分类并逐个浏览首个分类，验证 key 能打开有视频的页面
@@ -79,6 +79,10 @@ dotnet run --project VideoFetch.Test -- --cats
 # 联网：分类 + 四站点搜索/解析全量集成测试
 dotnet run --project VideoFetch.Test -- --live
 ```
+
+下载队列的测试覆盖：入队/去重/并发上限、失败（含残留文件清理）、取消、重试、删除到回收站、
+恢复、彻底删除、清空回收站，以及「哪种状态显示哪个按钮」的可见性矩阵。队列通过
+`IVideoInfoProvider` / `IDownloadRunner` / `IUiDispatcher` 三个接缝注入假实现，所以不需要网络也不需要 WPF。
 
 联网测试会读取 `%AppData%\VideoFetch\settings.json` 里的代理配置，和 App 走同一出口。
 
@@ -91,7 +95,8 @@ VideoFetch/
 │   ├── ISiteParser.cs              # 解析器接口
 │   ├── VideoInfoService.cs         # URL 路由 + 搜索
 │   ├── DownloadEngine.cs           # HLS/MP4 下载引擎
-│   ├── DownloadQueueService.cs     # 队列管理 + 去重
+│   ├── DownloadQueueService.cs     # 队列管理 + 去重 + 取消/重试/删除状态机
+│   ├── DownloadSeams.cs            # 队列的三个可替换接缝（信息/下载/UI 调度）
 │   ├── DownloadRecordService.cs    # SQLite 下载记录
 │   ├── SettingsService.cs          # 配置持久化
 │   ├── LanguageService.cs          # 语言服务

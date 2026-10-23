@@ -12,22 +12,46 @@ namespace VideoFetch.Services;
 /// The service is created once at startup and shared for the app's lifetime.
 /// Settings changes are applied via ApplySettings() instead of recreating the
 /// service (recreating it would orphan in-flight downloads and break UI bindings).
+///
+/// 队列同时负责任务的“生命周期动作”（取消/重试/删除/恢复/彻底删除），界面层只做
+/// 展示与转发。所有动作都返回 bool 而不是静默 return —— 用户点了按钮必须能分辨
+/// 到底生效了没有。
 /// </summary>
 public class DownloadQueueService
 {
     private readonly AppSettings _settings;
     private readonly DownloadRecordService _recordService;
-    private readonly VideoInfoService _infoService;
+    private readonly IVideoInfoProvider _infoProvider;
+    private readonly Func<IDownloadRunner> _runnerFactory;
+    private readonly IUiDispatcher _ui;
     private readonly SemaphoreSlim _concurrencySemaphore;
     private int _currentMaxConcurrent;
 
     public ObservableCollection<DownloadItem> Items { get; } = new();
 
     public DownloadQueueService(AppSettings settings, DownloadRecordService recordService)
+        : this(settings, recordService,
+               new VideoInfoService(),
+               () => new DownloadEngineRunner(settings.MaxSegmentThreads),
+               new WpfUiDispatcher())
+    {
+    }
+
+    /// <summary>
+    /// 测试/替换实现用构造函数：注入信息解析、下载执行与 UI 调度接缝。
+    /// </summary>
+    public DownloadQueueService(
+        AppSettings settings,
+        DownloadRecordService recordService,
+        IVideoInfoProvider infoProvider,
+        Func<IDownloadRunner> runnerFactory,
+        IUiDispatcher ui)
     {
         _settings = settings;
         _recordService = recordService;
-        _infoService = new VideoInfoService();
+        _infoProvider = infoProvider;
+        _runnerFactory = runnerFactory;
+        _ui = ui;
         _currentMaxConcurrent = Math.Max(1, settings.MaxConcurrentDownloads);
         _concurrencySemaphore = new SemaphoreSlim(_currentMaxConcurrent, _currentMaxConcurrent);
 
@@ -78,6 +102,10 @@ public class DownloadQueueService
         }
     }
 
+    // ══════════════════════════════════════════════════════════
+    //  ENQUEUE
+    // ══════════════════════════════════════════════════════════
+
     /// <summary>
     /// Add a new download to the queue and start it (subject to concurrency limit).
     /// Returns false if the same URL is already active in the queue (in-memory dedup).
@@ -111,62 +139,113 @@ public class DownloadQueueService
             IsActive = true
         };
 
-        App.Current.Dispatcher.Invoke(() => Items.Add(item));
-        _ = StartDownloadAsync(item, info, qualityKey);
+        _ui.Invoke(() => Items.Add(item));
+        _ = RunQueuedAsync(item, info);
         return true;
     }
 
-    private async Task StartDownloadAsync(DownloadItem item, VideoInfo info, string qualityKey)
+    /// <summary>
+    /// 重新下载一个失败或被取消的任务。
+    ///
+    /// 重新入队时换一个全新的 CancellationTokenSource —— 旧的一定已经被取消
+    /// 或已随失败流程结束，复用会让新任务立刻自我取消。
+    /// </summary>
+    public bool Retry(DownloadItem item)
     {
-        // Cancel while still queued → WaitAsync throws before the try block below
+        if (item is null) return false;
+        if (item.IsActive) return false;               // 已经在跑/在排队
+        if (item.IsCompleted) return false;            // 已完成的不叫重试
+        if (!item.HasFailed && !item.IsCancelled) return false;
+        if (string.IsNullOrWhiteSpace(item.Url)) return false;
+
+        // 同一 URL 已有别的活跃任务时不重复排队
+        if (Items.Any(i => !ReferenceEquals(i, item)
+                           && string.Equals(i.Url, item.Url, StringComparison.OrdinalIgnoreCase)
+                           && i.IsActive))
+            return false;
+
+        item.CancellationSource = new CancellationTokenSource();
+        item.HasFailed = false;
+        item.IsCancelled = false;
+        item.IsDeleted = false;
+        item.IsFileMissing = false;
+        item.StatusBeforeTrash = string.Empty;
+        item.Progress = 0;
+        item.Speed = string.Empty;
+        item.Status = "Queued";
+        item.IsActive = true;
+
+        _ = RunQueuedAsync(item, knownInfo: null);
+        return true;
+    }
+
+    /// <summary>
+    /// 核心执行流程：等并发许可 → 取信息 → 解析流地址 → 下载 → 收尾。
+    /// </summary>
+    private async Task RunQueuedAsync(DownloadItem item, VideoInfo? knownInfo)
+    {
+        // 记下本次运行使用的取消源。用户取消后立刻点重试时，旧任务的收尾逻辑
+        // 还在异步路上，如果不认领自己的“这一轮”，它会把新任务的状态覆盖成
+        // Cancelled/Failed —— 表现就是“重试了但还是失败”。
+        var cts = item.CancellationSource;
+        var token = cts.Token;
+        bool IsCurrentRun() => ReferenceEquals(item.CancellationSource, cts);
+
+        // Cancel while still queued → WaitAsync throws before the semaphore is held
         try
         {
-            await _concurrencySemaphore.WaitAsync(item.CancellationSource.Token);
+            await _concurrencySemaphore.WaitAsync(token);
         }
         catch (OperationCanceledException)
         {
-            FinishItem(item, "Cancelled");
+            if (IsCurrentRun()) MarkCancelled(item);
             return;
         }
 
         try
         {
-            if (item.CancellationSource.Token.IsCancellationRequested)
+            if (!IsCurrentRun()) return;        // 已被重试接管，本次作废
+            if (token.IsCancellationRequested)
             {
-                FinishItem(item, "Cancelled");
+                MarkCancelled(item);
                 return;
             }
 
             item.Status = "Downloading";
             item.IsDownloading = true;
 
-            var engine = new DownloadEngine(_settings.MaxSegmentThreads);
-            var streamUrl = await _infoService.ResolveStreamUrlAsync(info, qualityKey,
-                item.CancellationSource.Token);
+            // 重试路径没有缓存的 VideoInfo，重新抓一次页面
+            var info = knownInfo ?? await _infoProvider.FetchAsync(item.Url, token);
+            var streamUrl = await _infoProvider.ResolveStreamUrlAsync(info, item.Quality, token);
+
+            var runner = _runnerFactory();
 
             // Pass the original page URL as Referer (required for PornHub CDN auth)
-            var finalPath = await engine.DownloadAsync(
+            var finalPath = await runner.DownloadAsync(
                 streamUrl,
                 item.OutputPath,
                 pageUrl: info.Url,
                 onProgress: (pct, speed) =>
                 {
-                    // BeginInvoke: never block download threads on the UI thread
-                    App.Current.Dispatcher.BeginInvoke(() =>
+                    // Post: never block download threads on the UI thread
+                    _ui.Post(() =>
                     {
                         if (pct >= 0) item.Progress = pct;
                         item.Speed = speed;
                         item.Status = pct >= 100 ? "Completed" : "Downloading";
                     });
                 },
-                ct: item.CancellationSource.Token);
+                ct: token);
 
             // HLS remux may have produced a different (mp4) file name
+            if (!IsCurrentRun()) return;        // 结果已作废，别去覆写新一轮的状态
             item.OutputPath = finalPath;
             item.Progress = 100;
             item.Status = "Completed";
             item.IsCompleted = true;
-            item.IsActive = false;
+            item.HasFailed = false;
+            item.IsCancelled = false;
+            item.IsDownloading = false;
 
             // 下载完成后记录到SQLite（仅在文件保存成功后）
             try
@@ -179,23 +258,30 @@ public class DownloadQueueService
             }
             catch { /* 记录失败不影响下载流程 */ }
 
+            // 最后才清掉“活跃”：界面以 IsActive=false 作为任务结束的信号，
+            // 先置位会让去重记录还没写好的瞬间被当成已完成，用户能立刻重复入队。
+            item.IsActive = false;
+
             if (_settings.AutoOpenFolder)
                 System.Diagnostics.Process.Start("explorer.exe",
                     $"/select,\"{item.OutputPath}\"");
         }
         catch (OperationCanceledException)
         {
-            FinishItem(item, "Cancelled");
-            // Clean up partial file
-            try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
+            if (IsCurrentRun())
+            {
+                MarkCancelled(item);
+                DeletePartialFile(item);
+            }
         }
         catch (Exception ex)
         {
-            item.Status = $"Failed: {ex.Message}";
-            item.HasFailed = true;
-            item.IsActive = false;
-            // Clean up partial file so the dedup check (file exists) isn't fooled
-            try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
+            if (IsCurrentRun())
+            {
+                MarkFailed(item, ex);
+                // Clean up partial file so the dedup check (file exists) isn't fooled
+                DeletePartialFile(item);
+            }
         }
         finally
         {
@@ -203,27 +289,151 @@ public class DownloadQueueService
         }
     }
 
-    private static void FinishItem(DownloadItem item, string status)
+    private static void MarkCancelled(DownloadItem item)
     {
-        item.Status = status;
+        item.Status = "Cancelled";
+        item.IsCancelled = true;
+        item.HasFailed = false;
         item.IsActive = false;
+        item.IsDownloading = false;
     }
 
-    public void Cancel(DownloadItem item)
+    private static void MarkFailed(DownloadItem item, Exception ex)
     {
-        if (item == null || item.IsCompleted || item.HasFailed) return;
+        item.Status = $"Failed: {ex.Message}";
+        item.HasFailed = true;
+        item.IsCancelled = false;
+        item.IsActive = false;
+        item.IsDownloading = false;
+    }
+
+    private static void DeletePartialFile(DownloadItem item)
+    {
+        try { if (File.Exists(item.OutputPath)) File.Delete(item.OutputPath); } catch { }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  LIFECYCLE ACTIONS
+    // ══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// 取消一个正在排队/下载的任务。
+    ///
+    /// 只对活跃任务有意义：已完成、已失败、已取消的任务没有可取消的下载，
+    /// 返回 false 让界面知道这次点击不该发生（旧实现直接静默 return，
+    /// 失败行上的“取消”按钮点了毫无反应，就是这个原因）。
+    /// </summary>
+    public bool TryCancel(DownloadItem item)
+    {
+        if (item is null || !item.IsActive) return false;
+
         item.CancellationSource.Cancel();
+
+        if (!item.IsDownloading)
+        {
+            // 还在排队、没有真正开始下载：取消是即刻完成的，直接落到终态。
+            // 停在 "Cancelling..." 会留下一个既不能取消也不能重试的空窗。
+            MarkCancelled(item);
+            return true;
+        }
+
+        // A running download exits its loop asynchronously; show the intent first.
         item.Status = "Cancelling...";
-        // A queued (not yet started) item never touches the semaphore;
-        // mark it inactive immediately so dedup/queue-clear see it as done.
-        if (!item.IsDownloading) item.IsActive = false;
+        return true;
     }
 
     public void CancelAll()
     {
-        foreach (var item in Items.Where(i => i.IsActive))
-            Cancel(item);
+        foreach (var item in Items.Where(i => i.IsActive).ToList())
+            TryCancel(item);
     }
+
+    /// <summary>
+    /// 删除任务（软删除 → 移入回收站，文件与去重记录保留）。
+    /// 仅对已结束（完成/失败/取消）的任务有效，正在下载的必须先取消。
+    /// </summary>
+    public bool DeleteToTrash(DownloadItem item)
+    {
+        if (item is null || item.IsActive || item.IsDeleted) return false;
+
+        // 记住原状态，恢复时要还原（失败任务恢复后还得显示失败原因）
+        item.StatusBeforeTrash = item.Status;
+        item.IsDeleted = true;
+        item.Status = LanguageService.GetString("Queue_Status_Deleted");
+        return true;
+    }
+
+    /// <summary>
+    /// 从回收站恢复任务。
+    ///
+    /// 只有“已完成”的任务才应该因为文件缺失继续留在回收站；失败/取消的任务
+    /// 本来就没有文件，旧实现会在这里把它立刻又设回 IsFileMissing →
+    /// 恢复等于没恢复，于是永远出不了回收站。
+    /// </summary>
+    public bool Restore(DownloadItem item)
+    {
+        if (item is null || !item.IsDeleted) return false;
+
+        // 已完成但文件已经不在：恢复出来是个坏任务。标记成文件丢失（留在
+        // 回收站，只等彻底删除），并如实返回 false，别做无声的空操作。
+        if (item.IsCompleted && !File.Exists(item.OutputPath))
+        {
+            item.IsFileMissing = true;
+            return false;
+        }
+
+        item.IsDeleted = false;
+        item.IsFileMissing = false;
+
+        item.Status = string.IsNullOrEmpty(item.StatusBeforeTrash)
+            ? DeriveStatus(item)
+            : item.StatusBeforeTrash;
+        item.StatusBeforeTrash = string.Empty;
+        return true;
+    }
+
+    private static string DeriveStatus(DownloadItem item)
+        => item.IsCompleted ? "已完成"
+         : item.HasFailed ? "Failed"
+         : item.IsCancelled ? "Cancelled"
+         : "Queued";
+
+    /// <summary>彻底删除：移出列表；文件已丢失时一并清掉去重记录。</summary>
+    public bool Purge(DownloadItem item)
+    {
+        if (item is null || item.IsActive) return false;
+        PurgeItems(new List<DownloadItem> { item });
+        return true;
+    }
+
+    /// <summary>清空回收站，返回清掉的条目数。</summary>
+    public int EmptyTrash()
+    {
+        var trash = Items.Where(i => i.IsInTrash).ToList();
+        PurgeItems(trash);
+        return trash.Count;
+    }
+
+    private void PurgeItems(IList<DownloadItem> items)
+    {
+        if (items.Count == 0) return;
+
+        foreach (var item in items)
+        {
+            // 文件还在磁盘上 → 保留记录（去重仍有效）；文件已丢失 → 记录没意义，清掉
+            if (!File.Exists(item.OutputPath))
+                _recordService.DeleteRecord(item.Url);
+        }
+
+        _ui.Invoke(() =>
+        {
+            foreach (var item in items) Items.Remove(item);
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  HELPERS
+    // ══════════════════════════════════════════════════════════
 
     private static string MakeSafeFileName(string name)
     {

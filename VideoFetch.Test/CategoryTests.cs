@@ -225,8 +225,32 @@ internal static class CategoryTests
         TestXNxx();
         TestPinSe();
         TestRobustness();
+        TestTextDecoding();
 
         Console.WriteLine($"\n=== {_pass} passed, {_fail} failed ===");
         return _fail == 0;
+    }
+
+    /// <summary>
+    /// 标题文本解码：站点把标题二次转义，页面里出现 &amp;amp;comma; 这种形式，
+    /// 只解一遍会把 "&amp;comma;" 原样显示在下载列表的标题列上。
+    /// </summary>
+    private static void TestTextDecoding()
+    {
+        Console.WriteLine("\n-- text decoding");
+
+        Check("entities: 普通命名实体",
+            ParserHelper.DecodeEntities("Tom &amp; Jerry") == "Tom & Jerry");
+        Check("entities: 二次转义的 &comma;",
+            ParserHelper.DecodeEntities("Sex with a tight ass&amp;comma; homet") == "Sex with a tight ass, homet",
+            ParserHelper.DecodeEntities("Sex with a tight ass&amp;comma; homet"));
+        Check("entities: 数值实体",
+            ParserHelper.DecodeEntities("A&#44; B") == "A, B");
+        Check("entities: 不含实体的 & 不误伤",
+            ParserHelper.DecodeEntities("AT&T and R&D") == "AT&T and R&D");
+        Check("entities: 干净文本保持不变",
+            ParserHelper.DecodeEntities("plain title 123") == "plain title 123");
+        Check("entities: null/空值安全",
+            ParserHelper.DecodeEntities(null) == "" && ParserHelper.DecodeEntities("") == "");
     }
 }

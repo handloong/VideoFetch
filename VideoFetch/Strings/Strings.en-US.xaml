@@ -99,6 +99,7 @@
     <sys:String x:Key="Queue_Header_Speed">Speed</sys:String>
     <sys:String x:Key="Queue_Header_Actions">Actions</sys:String>
     <sys:String x:Key="Btn_CancelDownload">Cancel</sys:String>
+    <sys:String x:Key="Btn_RetryTask">Retry</sys:String>
     <sys:String x:Key="Btn_DeleteTask">Delete Task</sys:String>
     <sys:String x:Key="Btn_DeleteLocalFile">🗑 Delete File</sys:String>
     <sys:String x:Key="Btn_RestoreTask">Restore</sys:String>

@@ -254,7 +254,9 @@ public partial class MainViewModel : ObservableObject
         {
             QueueFilter.Downloading => i.IsActive,
             QueueFilter.Completed => !i.IsActive && i.IsCompleted && !IsTrashItem(i),
-            QueueFilter.Failed => !i.IsActive && i.HasFailed && !i.IsCompleted && !IsTrashItem(i),
+            // 失败视图也收纳“已取消”：两者都不会再自己往下跑，都需要重试/删除，
+            // 单独漏掉取消的任务会让它从所有分类里消失，只剩“全部”里能找到。
+            QueueFilter.Failed => !i.IsActive && !i.IsCompleted && (i.HasFailed || i.IsCancelled) && !IsTrashItem(i),
             QueueFilter.Deleted => IsTrashItem(i),
             _ => !IsTrashItem(i) // 全部：隐藏回收站内容
         };
@@ -287,6 +289,8 @@ public partial class MainViewModel : ObservableObject
         if (e.PropertyName is nameof(DownloadItem.Status)
             or nameof(DownloadItem.IsCompleted)
             or nameof(DownloadItem.HasFailed)
+            or nameof(DownloadItem.IsCancelled)
+            or nameof(DownloadItem.IsActive)
             or nameof(DownloadItem.IsDeleted)
             or nameof(DownloadItem.IsFileMissing))
         {
@@ -304,7 +308,7 @@ public partial class MainViewModel : ObservableObject
             if (i.IsActive) active++;
             else if (i.IsDeleted || i.IsFileMissing) trash++;
             else if (i.IsCompleted) completed++;
-            else if (i.HasFailed) failed++;
+            else if (i.HasFailed || i.IsCancelled) failed++;
         }
         int all = _queue.Items.Count - trash;
 
@@ -330,51 +334,48 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void DeleteTask(DownloadItem? item)
     {
-        if (item == null || item.IsActive) return;
-        item.IsDeleted = true;
-        item.Status = LanguageService.GetString("Queue_Status_Deleted");
+        if (item == null) return;
+        if (!_queue.DeleteToTrash(item)) return;
+        RefreshQueueStats();
     }
 
     /// <summary>从回收站恢复任务。</summary>
     [RelayCommand]
     private void RestoreTask(DownloadItem? item)
     {
-        if (item == null || !item.IsDeleted) return;
-        item.IsDeleted = false;
-        if (File.Exists(item.OutputPath) && item.IsCompleted)
-            item.Status = "已完成";
-        // 文件已经不在的任务恢复后仍会留在回收站（IsFileMissing）
-        else if (!File.Exists(item.OutputPath))
-            item.IsFileMissing = true;
+        if (item == null) return;
+        if (!_queue.Restore(item)) return;
+        RefreshQueueStats();
+    }
+
+    /// <summary>重试失败/被取消的任务（重新抓页面 → 重新解析地址 → 重新下载）。</summary>
+    [RelayCommand]
+    private void RetryTask(DownloadItem? item)
+    {
+        if (item == null) return;
+        if (!_queue.Retry(item)) return;
+
+        // 切到「下载中」让用户立刻看到它又跑起来了 —— 点了按钮没反应
+        // 正是这次要修的问题，重试后必须给出可见反馈。
+        QueueFilter = QueueFilter.Downloading;
+        RefreshQueueStats();
     }
 
     /// <summary>彻底删除：移出列表；文件已丢失时一并清掉去重记录。</summary>
     [RelayCommand]
     private void PurgeTask(DownloadItem? item)
     {
-        if (item == null || item.IsActive) return;
-        PurgeItems(new[] { item });
+        if (item == null) return;
+        if (!_queue.Purge(item)) return;
+        RefreshSearchMarks();
+        RefreshQueueStats();
     }
 
     /// <summary>清空回收站。</summary>
     [RelayCommand]
     private void EmptyTrash()
-        => PurgeItems(_queue.Items.Where(IsTrashItem).ToList());
-
-    private void PurgeItems(IList<DownloadItem> items)
     {
-        foreach (var item in items)
-        {
-            // 文件还在磁盘上 → 保留记录（去重仍有效）；文件已丢失 → 记录没意义，清掉
-            if (!File.Exists(item.OutputPath))
-                _recordService.DeleteRecord(item.Url);
-        }
-
-        App.Current.Dispatcher.Invoke(() =>
-        {
-            foreach (var item in items) _queue.Items.Remove(item);
-        });
-
+        if (_queue.EmptyTrash() == 0) return;
         RefreshSearchMarks();
         RefreshQueueStats();
     }
@@ -638,7 +639,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void CancelDownload(DownloadItem? item)
     {
-        if (item != null) _queue.Cancel(item);
+        if (item == null) return;
+        _queue.TryCancel(item);
     }
 
     [RelayCommand]

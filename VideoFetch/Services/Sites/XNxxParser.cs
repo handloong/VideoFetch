@@ -37,14 +37,14 @@ public class XNxxParser : ISiteParser
             if (titleNode != null)
             {
                 var raw = titleNode.GetAttributeValue("content", "") ?? titleNode.InnerText;
-                raw = System.Net.WebUtility.HtmlDecode(raw ?? "");
+                raw = ParserHelper.DecodeEntities(raw ?? "");
                 raw = Regex.Replace(raw, @"\s*-\s*XNXX\.COM\s*$", "", RegexOptions.IgnoreCase);
                 info.Title = raw.Trim();
             }
 
             // Author
             var authorNode = doc.DocumentNode.SelectSingleNode("//a[contains(@href,'/model/') or contains(@href,'/channels/')]");
-            if (authorNode != null) info.Author = System.Net.WebUtility.HtmlDecode(authorNode.InnerText?.Trim() ?? "");
+            if (authorNode != null) info.Author = ParserHelper.DecodeEntities(authorNode.InnerText?.Trim() ?? "");
 
             // Duration
             var durNode = doc.DocumentNode.SelectSingleNode("//span[contains(@class,'duration')]")
@@ -214,7 +214,7 @@ public class XNxxParser : ISiteParser
                                 ?? linkNode;
                 title = titleNode.InnerText?.Trim() ?? "";
             }
-            title = System.Net.WebUtility.HtmlDecode(title);
+            title = ParserHelper.DecodeEntities(title);
             title = Regex.Replace(title, "<[^>]*>", "").Trim();
 
             // Duration
@@ -225,7 +225,7 @@ public class XNxxParser : ISiteParser
             // Author / uploader
             var authorNode = item.SelectSingleNode(".//a[contains(@href,'/model/') or contains(@href,'/channels/')]")
                             ?? item.SelectSingleNode(".//span[contains(@class,'author')]");
-            var author = System.Net.WebUtility.HtmlDecode(authorNode?.InnerText?.Trim() ?? "");
+            var author = ParserHelper.DecodeEntities(authorNode?.InnerText?.Trim() ?? "");
 
             // Thumbnail
             var imgNode = item.SelectSingleNode(".//img");

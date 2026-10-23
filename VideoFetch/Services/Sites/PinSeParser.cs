@@ -236,7 +236,7 @@ public class PinSeParser : ISiteParser
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
         if (m.Success)
         {
-            var t = WebUtility.HtmlDecode(m.Groups[1].Value).Trim();
+            var t = ParserHelper.DecodeEntities(m.Groups[1].Value).Trim();
             if (!string.IsNullOrWhiteSpace(t))
                 return SanitizeFileName(t);
         }
@@ -460,7 +460,7 @@ public class PinSeParser : ISiteParser
                 RegexOptions.IgnoreCase);
             if (titleMatch.Success)
             {
-                title = WebUtility.HtmlDecode(titleMatch.Groups[1].Value).Trim();
+                title = ParserHelper.DecodeEntities(titleMatch.Groups[1].Value).Trim();
                 title = Regex.Replace(title, @"<[^>]*>", "");  // strip <mark> etc
             }
             else
@@ -470,7 +470,7 @@ public class PinSeParser : ISiteParser
                     RegexOptions.IgnoreCase);
                 if (ariaMatch.Success)
                 {
-                    title = WebUtility.HtmlDecode(ariaMatch.Groups[1].Value).Trim();
+                    title = ParserHelper.DecodeEntities(ariaMatch.Groups[1].Value).Trim();
                     title = Regex.Replace(title, @"<[^>]*>", "");
                 }
             }
@@ -481,7 +481,7 @@ public class PinSeParser : ISiteParser
                     @"<a[^>]*class=""video-card-title""[^>]*>(.*?)</a>",
                     RegexOptions.Singleline | RegexOptions.IgnoreCase);
                 if (innerMatch.Success)
-                    title = WebUtility.HtmlDecode(Regex.Replace(innerMatch.Groups[1].Value, @"<[^>]*>", "")).Trim();
+                    title = ParserHelper.DecodeEntities(Regex.Replace(innerMatch.Groups[1].Value, @"<[^>]*>", "")).Trim();
             }
             if (string.IsNullOrWhiteSpace(title))
                 title = href;
@@ -512,7 +512,7 @@ public class PinSeParser : ISiteParser
                 @"<a[^>]*class=""[^""]*video-card-author[^""]*""[^>]*title=""([^""]+)""",
                 RegexOptions.IgnoreCase);
             if (authorMatch.Success)
-                author = WebUtility.HtmlDecode(authorMatch.Groups[1].Value).Trim();
+                author = ParserHelper.DecodeEntities(authorMatch.Groups[1].Value).Trim();
 
             results.Add(new SearchResult
             {

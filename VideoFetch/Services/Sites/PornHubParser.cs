@@ -35,12 +35,14 @@ public class PornHubParser : ISiteParser
             // Title
             var m = Regex.Match(html, @"""video_title""\s*:\s*""([^""]+)""");
             if (!m.Success) m = Regex.Match(html, @"<title>([^<]+)");
-            if (m.Success) info.Title = DecodeJsonString(System.Net.WebUtility.HtmlDecode(m.Groups[1].Value.Trim()));
+            // 先解 \uXXXX 转义再解 HTML 实体：站点会把标题二次转义，
+            // 顺序反了会把形如 &comma; 的字面量直接送到界面上。
+            if (m.Success) info.Title = ParserHelper.DecodeEntities(DecodeJsonString(m.Groups[1].Value.Trim()));
 
             // Author
             m = Regex.Match(html, @"""author""\s*:\s*\{[^}]*?""name""\s*:\s*""([^""]+)""");
             if (!m.Success) m = Regex.Match(html, @"class=""usernameBadgesWrapper[^""]*""[^>]*>[^<]*<[^>]+>([^<]+)<");
-            if (m.Success) info.Author = DecodeJsonString(System.Net.WebUtility.HtmlDecode(m.Groups[1].Value.Trim()));
+            if (m.Success) info.Author = ParserHelper.DecodeEntities(DecodeJsonString(m.Groups[1].Value.Trim()));
 
             // Duration
             m = Regex.Match(html, @"""duration""\s*:\s*""([^""]+)""");
@@ -131,7 +133,7 @@ public class PornHubParser : ISiteParser
 
             var titleNode = item.SelectSingleNode(".//span[contains(@class,'title')]//a")
                             ?? linkNode;
-            var title = DecodeJsonString(System.Net.WebUtility.HtmlDecode(titleNode.InnerText?.Trim() ?? ""));
+            var title = ParserHelper.DecodeEntities(DecodeJsonString(titleNode.InnerText?.Trim() ?? ""));
 
             var durNode = item.SelectSingleNode(".//span[contains(@class,'duration')]")
                             ?? item.SelectSingleNode(".//div[contains(@class,'duration')]");
@@ -139,7 +141,7 @@ public class PornHubParser : ISiteParser
 
             var authorNode = item.SelectSingleNode(".//span[contains(@class,'username')]//a")
                               ?? item.SelectSingleNode(".//a[contains(@class,'username')]");
-            var author = System.Net.WebUtility.HtmlDecode(authorNode?.InnerText?.Trim() ?? "");
+            var author = ParserHelper.DecodeEntities(authorNode?.InnerText?.Trim() ?? "");
 
             var imgNode = item.SelectSingleNode(".//img");
             var thumb = ParserHelper.GetThumbUrl(imgNode);

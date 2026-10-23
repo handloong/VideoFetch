@@ -11,7 +11,7 @@ namespace VideoFetch.Services;
 /// Also handles resolving the final download URL (including PornHub mp4_api),
 /// and provides search/category browsing functionality.
 /// </summary>
-public class VideoInfoService
+public class VideoInfoService : IVideoInfoProvider
 {
     private readonly List<ISiteParser> _parsers = new()
     {

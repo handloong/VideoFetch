@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -118,7 +119,152 @@ internal static class UiSmokeTest
         Check("ui-smoke: rendered bitmap is not blank", !IsBlank(bmp));
         Console.WriteLine($"  info  screenshot: {path}");
 
+        // 5) 下载页：失败行必须给出「重试 / 删除任务」，不能再是点了没反应的「取消」
+        ok &= CheckQueueTab(vm);
+
         return ok;
+    }
+
+    /// <summary>
+    /// 渲染下载页并检查行内操作按钮：
+    ///   下载中 → 取消
+    ///   失败   → 重试 + 删除任务（线上 bug：这里只有“取消”，而取消对失败任务
+    ///            是空操作，也没有删除入口）
+    ///   已完成 → 删除任务 + 删除文件
+    /// 随后走一遍真实的命令链路（删除 → 回收站 → 恢复），确认视图分类跟着变。
+    /// </summary>
+    private static bool CheckQueueTab(MainViewModel vm)
+    {
+        var running = new DownloadItem
+        {
+            Title = "下载中的任务", Url = "https://example.test/v/active",
+            Status = "Downloading", IsActive = true, IsDownloading = true, Progress = 42, Speed = "1.2 MB/s"
+        };
+        var failed = new DownloadItem
+        {
+            Title = "hot stepdaughter took dick in her a...",
+            Url = "https://example.test/v/failed",
+            Status = "Failed: Response status code does not indicate success: 410 (Gone).",
+            HasFailed = true, Progress = 8
+        };
+        var cancelled = new DownloadItem
+        {
+            Title = "被取消的任务", Url = "https://example.test/v/cancelled",
+            Status = "Cancelled", IsCancelled = true
+        };
+        var completed = new DownloadItem
+        {
+            Title = "已完成的任务", Url = "https://example.test/v/done",
+            Status = "Completed", IsCompleted = true, Progress = 100,
+            OutputPath = Path.Combine(Path.GetTempPath(), "vf-ui-smoke-done.mp4")
+        };
+
+        foreach (var i in new[] { running, failed, cancelled, completed }) vm.DownloadItems.Add(i);
+
+        var tab = new QueueTab { DataContext = vm };
+        tab.Measure(new Size(TabWidth, TabHeight));
+        tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        tab.UpdateLayout();
+
+        var ok = true;
+        var list = FindDescendant<ListView>(tab, lv => ReferenceEquals(lv.ItemsSource, vm.QueueItemsView));
+        Check("ui-smoke: 队列列表已绑定", list != null);
+        if (list == null) return false;
+
+        string Btn(string key) => Application.Current.TryFindResource(key) as string ?? $"[{key}]";
+
+        var runningButtons = VisibleButtons(list, running);
+        var failedButtons = VisibleButtons(list, failed);
+        var completedButtons = VisibleButtons(list, completed);
+        Console.WriteLine($"  info  失败行按钮: {string.Join(" / ", failedButtons)}");
+
+        ok &= Check("ui-smoke: 下载中行显示取消",
+            runningButtons.Count == 1 && runningButtons[0] == Btn("Btn_CancelDownload"));
+        ok &= Check("ui-smoke: 失败行显示重试",
+            failedButtons.Contains(Btn("Btn_RetryTask")));
+        ok &= Check("ui-smoke: 失败行显示删除任务",
+            failedButtons.Contains(Btn("Btn_DeleteTask")));
+        ok &= Check("ui-smoke: 失败行不再显示取消（点了没反应的那个）",
+            !failedButtons.Contains(Btn("Btn_CancelDownload")));
+        ok &= Check("ui-smoke: 失败行不显示删除文件",
+            !failedButtons.Contains(Btn("Btn_DeleteLocalFile")));
+        ok &= Check("ui-smoke: 已完成行显示删除任务 + 删除文件",
+            completedButtons.Contains(Btn("Btn_DeleteTask")) &&
+            completedButtons.Contains(Btn("Btn_DeleteLocalFile")));
+
+        // 截图（修复后应该看到 重试 / 删除任务）
+        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(tab);
+        var path = Path.Combine(AppContext.BaseDirectory, "ui-smoke-queuetab.png");
+        using (var fs = File.Create(path))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            encoder.Save(fs);
+        }
+        ok &= Check("ui-smoke: 下载页截图非空白", !IsBlank(bmp));
+        Console.WriteLine($"  info  screenshot: {path}");
+
+        // 走真实命令链路：失败任务 → 删除任务 → 回收站 → 恢复 → 回到失败视图
+        ok &= Check("ui-smoke: 失败任务出现在「失败」视图",
+            InView(vm, QueueFilter.Failed, failed) && !InView(vm, QueueFilter.Failed, completed));
+        ok &= Check("ui-smoke: 已取消任务也出现在「失败」视图",
+            InView(vm, QueueFilter.Failed, cancelled));
+
+        vm.DeleteTaskCommand.Execute(failed);
+        ok &= Check("ui-smoke: 删除后进入「已删除」视图", InView(vm, QueueFilter.Deleted, failed));
+        ok &= Check("ui-smoke: 删除后从「全部」消失", !InView(vm, QueueFilter.All, failed));
+
+        vm.RestoreTaskCommand.Execute(failed);
+        ok &= Check("ui-smoke: 恢复后回到「失败」视图（不再死循环在回收站）",
+            InView(vm, QueueFilter.Failed, failed) && !InView(vm, QueueFilter.Deleted, failed));
+
+        vm.QueueFilter = QueueFilter.All;
+        return ok;
+    }
+
+    /// <summary>某一行当前实际可见的按钮文字（按 Visibility 判定，与绑定一致）。</summary>
+    private static List<string> VisibleButtons(ListView list, object item)
+    {
+        var result = new List<string>();
+        var index = list.Items.IndexOf(item);
+        if (index < 0) return result;
+        if (list.ItemContainerGenerator.ContainerFromIndex(index) is not ListViewItem row) return result;
+        CollectVisibleButtons(row, result);
+        return result;
+    }
+
+    private static void CollectVisibleButtons(DependencyObject root, List<string> acc)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is Button b && b.Content is string text && IsEffectivelyVisible(b))
+                acc.Add(text);
+            CollectVisibleButtons(child, acc);
+        }
+    }
+
+    /// <summary>
+    /// 祖先折叠时，子元素自身的 Visibility 仍然是 Visible —— 只看自己会
+    /// 把整组被折叠的按钮误判成“可见”，所以必须一路检查到行的根部。
+    /// </summary>
+    private static bool IsEffectivelyVisible(DependencyObject node)
+    {
+        for (var current = node; current != null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is UIElement element && element.Visibility != Visibility.Visible)
+                return false;
+            if (current is ListViewItem) break;   // 行边界之外的元素不算
+        }
+        return true;
+    }
+
+    private static bool InView(MainViewModel vm, QueueFilter filter, DownloadItem item)
+    {
+        vm.QueueFilter = filter;
+        return vm.QueueItemsView.Cast<DownloadItem>().Contains(item);
     }
 
     private static bool IsBlank(BitmapSource bmp)
@@ -149,11 +295,12 @@ internal static class UiSmokeTest
         return null;
     }
 
-    private static void Check(string name, bool condition)
+    private static bool Check(string name, bool condition)
     {
         // Reuse CategoryTests' counter style: pass/fail printed individually.
         Console.WriteLine(condition ? $"  PASS  {name}" : $"  FAIL  {name}");
         if (!condition) _failed++;
+        return condition;
     }
 
     private static int _failed;

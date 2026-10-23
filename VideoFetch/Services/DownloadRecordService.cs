@@ -18,14 +18,26 @@ public class DownloadRecordService
 {
     private readonly string _dbPath;
 
-    public DownloadRecordService()
+    /// <param name="dbPath">
+    /// 显式指定数据库文件（测试用临时库）。为空时用 %APPDATA%/VideoFetch/downloads.db。
+    /// </param>
+    public DownloadRecordService(string? dbPath = null)
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = System.IO.Path.Combine(appData, "VideoFetch");
-        if (!System.IO.Directory.Exists(dir))
-            System.IO.Directory.CreateDirectory(dir);
+        if (!string.IsNullOrWhiteSpace(dbPath))
+        {
+            _dbPath = dbPath;
+            var parent = System.IO.Path.GetDirectoryName(dbPath);
+            if (!string.IsNullOrEmpty(parent)) System.IO.Directory.CreateDirectory(parent);
+        }
+        else
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var dir = System.IO.Path.Combine(appData, "VideoFetch");
+            if (!System.IO.Directory.Exists(dir))
+                System.IO.Directory.CreateDirectory(dir);
 
-        _dbPath = System.IO.Path.Combine(dir, "downloads.db");
+            _dbPath = System.IO.Path.Combine(dir, "downloads.db");
+        }
 
         // 初始化数据库表
         using var conn = new SqliteConnection($"Data Source={_dbPath}");

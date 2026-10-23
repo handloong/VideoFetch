@@ -6,7 +6,8 @@ using VideoFetch.Services.Sites;
 using VideoFetch.Test;
 
 // Test entry point.
-//   (no args)  offline only: category parsing (fixtures) + CategoryTab layout smoke test
+//   (no args)  offline only: category parsing (fixtures) + download queue state machine
+//              + CategoryTab / QueueTab layout smoke tests
 //   --cats     + live: load each site's real categories and browse the first two
 //   --live     + live: categories and the 4-site search/parse integration test
 //   --probe    network only: print HTTP status for the pages the parsers depend on
@@ -21,12 +22,13 @@ if (probeOnly)
 }
 
 var categoriesOk = CategoryTests.Run();
+var downloadOk = await DownloadQueueTests.RunAsync();
 var uiOk = UiSmokeTest.Run();
 
 if (!live && !catsOnly)
 {
     Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
-    Environment.ExitCode = categoriesOk && uiOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && uiOk ? 0 : 1;
     return;
 }
 
@@ -34,7 +36,7 @@ var liveCategoriesOk = await CategoryLiveTests.RunAsync();
 
 if (catsOnly)
 {
-    Environment.ExitCode = categoriesOk && uiOk && liveCategoriesOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && uiOk && liveCategoriesOk ? 0 : 1;
     return;
 }
 
@@ -94,4 +96,4 @@ await Task.WhenAll(
 );
 
 Console.WriteLine("\nDone!");
-Environment.ExitCode = categoriesOk && liveCategoriesOk ? 0 : 1;
+Environment.ExitCode = categoriesOk && downloadOk && liveCategoriesOk ? 0 : 1;

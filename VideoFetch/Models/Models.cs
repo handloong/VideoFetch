@@ -61,6 +61,7 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     private bool _isActive;
     private bool _isDeleted;
     private bool _isFileMissing;
+    private bool _isCancelled;
 
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public string Title { get; set; } = string.Empty;
@@ -78,7 +79,7 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public bool IsActive
     {
         get => _isActive;
-        set { _isActive = value; OnPropertyChanged(nameof(IsActive)); OnPropertyChanged(nameof(IsInTrash)); }
+        set { _isActive = value; OnPropertyChanged(nameof(IsActive)); NotifyRowActions(); }
     }
 
     /// <summary>
@@ -93,7 +94,7 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public bool IsDeleted
     {
         get => _isDeleted;
-        set { _isDeleted = value; OnPropertyChanged(nameof(IsDeleted)); OnPropertyChanged(nameof(IsInTrash)); }
+        set { _isDeleted = value; OnPropertyChanged(nameof(IsDeleted)); NotifyRowActions(); }
     }
 
     /// <summary>
@@ -103,13 +104,60 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public bool IsFileMissing
     {
         get => _isFileMissing;
-        set { _isFileMissing = value; OnPropertyChanged(nameof(IsFileMissing)); OnPropertyChanged(nameof(IsInTrash)); }
+        set { _isFileMissing = value; OnPropertyChanged(nameof(IsFileMissing)); NotifyRowActions(); }
+    }
+
+    /// <summary>
+    /// 用户主动取消（或排队中就被取消）的任务。与失败区分开：取消不算错误，
+    /// 但要和失败一样提供“重试”入口，否则任务点了取消就再也起不来。
+    /// </summary>
+    public bool IsCancelled
+    {
+        get => _isCancelled;
+        set { _isCancelled = value; OnPropertyChanged(nameof(IsCancelled)); NotifyRowActions(); }
     }
 
     /// <summary>
     /// 回收站成员（软删除或文件丢失），用于切换行内按钮组（恢复/彻底删除）。
     /// </summary>
     public bool IsInTrash => !IsActive && (IsDeleted || IsFileMissing);
+
+    // ── 行内操作按钮的可见性（由状态推导，避免界面里堆多重转换器） ──
+
+    /// <summary>取消：仅排队中/下载中。</summary>
+    public bool CanCancel => IsActive;
+
+    /// <summary>重试：已结束且没成功（失败或取消）。</summary>
+    public bool CanRetry => !IsActive && !IsCompleted && (HasFailed || IsCancelled);
+
+    /// <summary>删除任务：任何已结束、且还没进回收站的任务（失败/取消也必须有删除入口）。</summary>
+    public bool CanDelete => !IsActive && !IsInTrash;
+
+    /// <summary>删除本地文件：仅已完成、文件确实在磁盘上、且不在回收站里。</summary>
+    public bool CanDeleteFile => !IsActive && IsCompleted && !IsFileMissing && !IsInTrash;
+
+    /// <summary>
+    /// 恢复：软删除的任务，且恢复出来还能用。已完成但文件已经没了的任务
+    /// 恢复回去也只是个坏任务，界面只提供“彻底删除”，避免点了没反应。
+    /// </summary>
+    public bool CanRestore => IsDeleted && !(IsCompleted && IsFileMissing);
+
+    /// <summary>进回收站前的状态，恢复时用来还原（例如失败原因）。</summary>
+    public string StatusBeforeTrash { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 状态位变化后刷新所有由状态推导出来的属性。逐个通知太多容易漏，
+    /// 这里统一发一轮，属性很少、开销可以忽略。
+    /// </summary>
+    private void NotifyRowActions()
+    {
+        OnPropertyChanged(nameof(IsInTrash));
+        OnPropertyChanged(nameof(CanCancel));
+        OnPropertyChanged(nameof(CanRetry));
+        OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(CanDeleteFile));
+        OnPropertyChanged(nameof(CanRestore));
+    }
 
     public double Progress
     {
@@ -132,13 +180,13 @@ public class DownloadItem : System.ComponentModel.INotifyPropertyChanged
     public bool IsCompleted
     {
         get => _isCompleted;
-        set { _isCompleted = value; OnPropertyChanged(nameof(IsCompleted)); }
+        set { _isCompleted = value; OnPropertyChanged(nameof(IsCompleted)); NotifyRowActions(); }
     }
 
     public bool HasFailed
     {
         get => _hasFailed;
-        set { _hasFailed = value; OnPropertyChanged(nameof(HasFailed)); }
+        set { _hasFailed = value; OnPropertyChanged(nameof(HasFailed)); NotifyRowActions(); }
     }
 
     public CancellationTokenSource CancellationSource { get; set; } = new();
