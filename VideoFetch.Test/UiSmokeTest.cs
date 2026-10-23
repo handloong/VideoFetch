@@ -388,6 +388,64 @@ internal static class UiSmokeTest
             vm.SearchResults.Count.ToString());
         ok &= Check("search: 切站点后不再有下一页", !vm.HasMoreResults);
 
+        // ── 3b) 设置页的语言切换入口（以前被 Visibility="Collapsed" 藏起来了） ──
+        var langFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "VideoFetch", "language.txt");
+        var hadLangFile = File.Exists(langFile);
+        var originalLangFile = hadLangFile ? File.ReadAllText(langFile) : null;
+
+        try
+        {
+            var settingsTab = new SettingsTab { DataContext = vm };
+            settingsTab.Measure(new Size(TabWidth, TabHeight));
+            settingsTab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+            settingsTab.UpdateLayout();
+
+            // 截图留档：语言卡片是新露出来的元素
+            var shot = RenderOnThemeBackground(settingsTab, (int)TabWidth, (int)TabHeight);
+            var shotPath = Path.Combine(AppContext.BaseDirectory, "ui-smoke-settings.png");
+            using (var fs = File.Create(shotPath))
+            {
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(shot));
+                encoder.Save(fs);
+            }
+
+            var langCombo = FindDescendant<ComboBox>(settingsTab, c => c.Name == "LangCombo");
+            ok &= Check("lang: 设置页有语言下拉框", langCombo != null);
+            ok &= Check("lang: 语言下拉框可见（不再被隐藏）",
+                langCombo != null && IsEffectivelyVisible(langCombo));
+            ok &= Check("lang: 两个语言选项", langCombo?.Items.Count == 2,
+                langCombo?.Items.Count.ToString());
+
+            var selectedTag = (langCombo?.SelectedItem as ComboBoxItem)?.Tag as string;
+            ok &= Check("lang: 预选当前语言", selectedTag == LanguageService.CurrentLanguage,
+                selectedTag ?? "null");
+
+            // 选英文 → 立即生效（不再重启进程）
+            langCombo!.SelectedIndex = 1;
+            ok &= Check("lang: 选择后立即切换到英文",
+                LanguageService.CurrentLanguage == "en-US", LanguageService.CurrentLanguage);
+            ok &= Check("lang: 文案跟着变英文",
+                vm.DurationOptions[0].Label == Res("Dur_All") && vm.DurationOptions[0].Label != "全部时长",
+                vm.DurationOptions[0].Label);
+
+            // 切回中文
+            langCombo.SelectedIndex = 0;
+            ok &= Check("lang: 切回中文", LanguageService.CurrentLanguage == "zh-CN");
+        }
+        finally
+        {
+            // 别把测试的语言选择留给用户：恢复 language.txt 原样
+            try
+            {
+                if (hadLangFile) File.WriteAllText(langFile, originalLangFile!);
+                else if (File.Exists(langFile)) File.Delete(langFile);
+            }
+            catch { }
+        }
+
         // ── 4) IsAlreadyDownloaded 要通知界面 ──
         var item = new SearchResult { Title = "通知测试", Url = "https://example.test/n1" };
         var hits = 0;

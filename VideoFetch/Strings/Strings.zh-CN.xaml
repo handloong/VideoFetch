@@ -164,6 +164,7 @@
     <sys:String x:Key="Btn_SaveSettings">💾 保存设置</sys:String>
 
     <!-- Language switcher -->
+    <sys:String x:Key="Language_Hint">切换后立即生效，下次启动沿用这个选择</sys:String>
     <sys:String x:Key="Language_Label">语言：</sys:String>
     <sys:String x:Key="Lang_ZhCN">中文</sys:String>
     <sys:String x:Key="Lang_ENUS">English</sys:String>

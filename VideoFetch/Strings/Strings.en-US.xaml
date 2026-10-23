@@ -165,6 +165,7 @@
     <sys:String x:Key="Btn_SaveSettings">💾 Save Settings</sys:String>
 
     <!-- Language switcher -->
+    <sys:String x:Key="Language_Hint">Takes effect immediately and is remembered for the next launch</sys:String>
     <sys:String x:Key="Language_Label">Language:</sys:String>
     <sys:String x:Key="Lang_ZhCN">中文</sys:String>
     <sys:String x:Key="Lang_ENUS">English</sys:String>

@@ -59,6 +59,20 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Language：以前这段是 Visibility="Collapsed"，界面上根本找不到入口 -->
+                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource Language_Label}" FontSize="13" FontWeight="Medium" Margin="0,0,0,8"/>
+                        <ComboBox x:Name="LangCombo" SelectionChanged="LangCombo_SelectionChanged"
+                                  Width="140" FontSize="12" Padding="6,4" HorizontalAlignment="Left">
+                            <ComboBoxItem Tag="zh-CN" Content="{DynamicResource Lang_ZhCN}"/>
+                            <ComboBoxItem Tag="en-US" Content="{DynamicResource Lang_ENUS}"/>
+                        </ComboBox>
+                        <TextBlock Text="{DynamicResource Language_Hint}" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Network settings -->
                 <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
                     <StackPanel>
@@ -105,19 +119,6 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Language (hidden) -->
-                <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12" Visibility="Collapsed">
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Language_Label}" FontSize="13" FontWeight="Medium" Margin="0,0,0,8"/>
-                        <ComboBox x:Name="LangCombo" SelectionChanged="LangCombo_SelectionChanged"
-                                  Width="140" FontSize="12" Padding="6,4" HorizontalAlignment="Left">
-                            <ComboBoxItem Tag="zh-CN" Content="{DynamicResource Lang_ZhCN}"/>
-                            <ComboBoxItem Tag="en-US" Content="{DynamicResource Lang_ENUS}"/>
-                        </ComboBox>
-                        <TextBlock Text="切换语言后将自动重启应用" FontSize="11"
-                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </Border>
             </StackPanel>
         </ScrollViewer>
     </Grid>
