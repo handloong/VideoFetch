@@ -65,6 +65,19 @@ public record DurationOption(string Label, DurationFilter Value)
 }
 
 /// <summary>
+/// 下载队列的排序列。点表头切换，默认按下载时间倒序（最新的在最上面）。
+/// </summary>
+public enum QueueSortKey
+{
+    Title,
+    Duration,
+    Size,
+    Progress,
+    Status,
+    DownloadTime
+}
+
+/// <summary>
 /// 结果列表的排序方式。列表本身来自站点的相关度/更新顺序，"默认"就保持原样。
 /// </summary>
 public enum ResultSort

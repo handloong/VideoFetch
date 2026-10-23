@@ -68,7 +68,19 @@
                              IsChecked="{Binding QueueFilter, Converter={StaticResource EnumEquals}, ConverterParameter={x:Static models:QueueFilter.Deleted}}"/>
             </StackPanel>
 
+            <!-- 当前排序（点表头切换，这里给出"按什么排、哪个方向"的反馈） -->
+            <TextBlock Grid.Column="1" Text="{Binding QueueSortLabel}"
+                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                       Margin="0,0,10,0" FontSize="11"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="{Binding DeleteFilesText}"
+                        Click="DeleteFiles_Click"
+                        Style="{StaticResource DangerButtonStyle}" Padding="8,3"
+                        Margin="0,0,8,0"
+                        ToolTip="{DynamicResource Tip_DeleteFiles}"
+                        Visibility="{Binding DeletableSelectionCount, Converter={StaticResource IntGtZero}}"/>
                 <Button Content="{DynamicResource Btn_RetryAll}"
                         Command="{Binding RetryAllFailedCommand}"
                         Style="{StaticResource SecondaryButtonStyle}" Padding="8,3"
@@ -97,12 +109,15 @@
                       Background="Transparent" BorderThickness="0"
                       ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
                       MouseDoubleClick="QueueList_MouseDoubleClick"
+                      SelectionMode="Extended"
+                      SelectionChanged="QueueList_SelectionChanged"
+                      GridViewColumnHeader.Click="QueueHeader_Click"
                       ScrollViewer.HorizontalScrollBarVisibility="Auto"
                       ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListView.View>
                     <!-- 允许拖动表头换列顺序；列宽靠表头右边缘拖拽调整 -->
                     <GridView AllowsColumnReorder="True">
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Title}" Width="200">
+                        <GridViewColumn x:Name="ColTitle" Header="{DynamicResource Queue_Header_Title}" Width="200">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
@@ -112,7 +127,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Duration}" Width="70">
+                        <GridViewColumn x:Name="ColDuration" Header="{DynamicResource Queue_Header_Duration}" Width="70">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <TextBlock Text="{Binding DurationText}" FontSize="11"
@@ -122,7 +137,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Size}" Width="70">
+                        <GridViewColumn x:Name="ColSize" Header="{DynamicResource Queue_Header_Size}" Width="70">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <TextBlock Text="{Binding FileSizeText}" FontSize="11"
@@ -131,7 +146,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Progress}" Width="100">
+                        <GridViewColumn x:Name="ColProgress" Header="{DynamicResource Queue_Header_Progress}" Width="100">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <ProgressBar Value="{Binding Progress}" Maximum="100"
@@ -140,7 +155,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="{DynamicResource Queue_Header_Status}" Width="110">
+                        <GridViewColumn x:Name="ColStatus" Header="{DynamicResource Queue_Header_Status}" Width="110">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <StackPanel>
@@ -159,7 +174,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="{DynamicResource Queue_Header_DownloadTime}" Width="125">
+                        <GridViewColumn x:Name="ColDownloadTime" Header="{DynamicResource Queue_Header_DownloadTime}" Width="125">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate DataType="{x:Type models:DownloadItem}">
                                     <!-- 完成时间；还在排队/下载中显示入队时间 -->

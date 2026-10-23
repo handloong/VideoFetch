@@ -129,7 +129,10 @@ internal static class UiSmokeTest
         // 5) 下载页：失败行必须给出「重试 / 删除任务」，不能再是点了没反应的「取消」
         ok &= CheckQueueTab(vm);
 
-        // 4b) 内置播放器：音量记忆 + 播放时机
+        // 4b) 队列排序 + 多选删除文件
+        ok &= CheckQueueSortAndDelete(vm);
+
+        // 4c) 内置播放器：音量记忆 + 播放时机
         ok &= CheckPlayer();
 
         // 6) 搜索结果 / 分类结果的行右键菜单
@@ -248,6 +251,128 @@ internal static class UiSmokeTest
         vm.SearchResults.Clear();
 
         return ok;
+    }
+
+    /// <summary>
+    /// 队列排序（点表头）与多选删除本地文件。
+    ///
+    /// 排序键、自然方向、再次点击反向，这三件事都得对；删除只能作用于
+    /// 真正有文件的已完成任务，失败/下载中的不能被误删。
+    /// </summary>
+    private static bool CheckQueueSortAndDelete(MainViewModel vm)
+    {
+        var ok = true;
+        var root = Path.Combine(Path.GetTempPath(), "vf-queue-del-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(root);
+
+        DownloadItem Make(string title, string duration, long size, DateTime added)
+        {
+            var path = Path.Combine(root, title + ".mp4");
+            File.WriteAllText(path, "x");
+            return new DownloadItem
+            {
+                Title = title,
+                Url = "https://example.test/v/" + title,
+                OutputPath = path,
+                State = DownloadState.Completed,
+                IsCompleted = true,
+                Duration = duration,
+                FileSize = size,
+                AddedAt = added
+            };
+        }
+
+        // 三条：大小/时长/时间 三者顺序故意各不相同
+        var a = Make("A", "1 min", 300, new DateTime(2026, 10, 20, 10, 0, 0));
+        var b = Make("B", "3 min", 100, new DateTime(2026, 10, 22, 10, 0, 0));
+        var c = Make("C", "2 min", 200, new DateTime(2026, 10, 21, 10, 0, 0));
+        var failed = new DownloadItem
+        {
+            Title = "F", Url = "https://example.test/v/F", State = DownloadState.Failed, HasFailed = true
+        };
+
+        foreach (var i in new[] { a, b, c, failed }) vm.DownloadItems.Add(i);
+
+        var tab = new QueueTab { DataContext = vm };
+        tab.Measure(new Size(TabWidth, TabHeight));
+        tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        tab.UpdateLayout();
+
+        var list = FindDescendant<ListView>(tab, l => ReferenceEquals(l.ItemsSource, vm.QueueItemsView));
+        if (list == null) return false;
+
+        string Order() => string.Join(",", list.Items.Cast<DownloadItem>()
+            .Where(i => i.Title is "A" or "B" or "C")
+            .Select(i => i.Title));
+
+        ok &= Check("queue: 支持多选", list.SelectionMode == SelectionMode.Extended,
+            list.SelectionMode.ToString());
+
+        ok &= Check("queue: 默认按下载时间倒序", Order() == "B,C,A", Order());
+        ok &= Check("queue: 排序提示文字",
+            vm.QueueSortLabel.Contains(Res("Queue_Header_DownloadTime")) && vm.QueueSortLabel.Contains("↓"),
+            vm.QueueSortLabel);
+
+        // 点「大小」：数值列自然方向是降序
+        ClickHeader(list, Res("Queue_Header_Size"));
+        ok &= Check("queue: 点大小表头切到该列",
+            vm.QueueSortKey == QueueSortKey.Size && vm.QueueSortDescending,
+            $"{vm.QueueSortKey}/{vm.QueueSortDescending}");
+        ok &= Check("queue: 大小降序", Order() == "A,C,B", Order());
+
+        // 同一列再点一次：反向
+        ClickHeader(list, Res("Queue_Header_Size"));
+        ok &= Check("queue: 再点一次变升序", !vm.QueueSortDescending && Order() == "B,C,A", Order());
+
+        // 文字列自然方向是升序
+        ClickHeader(list, Res("Queue_Header_Title"));
+        ok &= Check("queue: 标题列默认升序",
+            vm.QueueSortKey == QueueSortKey.Title && !vm.QueueSortDescending && Order() == "A,B,C",
+            $"{vm.QueueSortKey}/{vm.QueueSortDescending}/{Order()}");
+
+        // 点「操作」列（没有排序键）不能把表头点坏
+        ClickHeader(list, Res("Queue_Header_Actions"));
+        ok &= Check("queue: 非排序列点了不变", vm.QueueSortKey == QueueSortKey.Title);
+
+        // ── 多选删除文件 ──
+        vm.UpdateQueueSelection(new[] { a, b, c });
+        ok &= Check("queue: 选中 3 个已完成任务", vm.DeletableSelectionCount == 3,
+            vm.DeletableSelectionCount.ToString());
+
+        vm.UpdateQueueSelection(new[] { a, b, failed });
+        ok &= Check("queue: 失败任务不计入可删", vm.DeletableSelectionCount == 2,
+            vm.DeletableSelectionCount.ToString());
+
+        tab.UpdateLayout();
+        var deleteBtn = FindDescendant<Button>(tab, b2 => (b2.Content as string) == vm.DeleteFilesText);
+        ok &= Check("queue: 多选后出现批量删除按钮",
+            deleteBtn != null && IsEffectivelyVisible(deleteBtn), vm.DeleteFilesText);
+
+        vm.DeleteSelectedFilesCommand.Execute(null);
+
+        ok &= Check("queue: 选中的文件被删掉", !File.Exists(a.OutputPath) && !File.Exists(b.OutputPath));
+        ok &= Check("queue: 没选中的文件还在", File.Exists(c.OutputPath));
+        ok &= Check("queue: 删除后标记为文件丢失", a.IsFileMissing && b.IsFileMissing);
+        ok &= Check("queue: 删完按钮消失", vm.DeletableSelectionCount == 0,
+            vm.DeletableSelectionCount.ToString());
+
+        // 复位：排序回默认，测试数据清掉
+        vm.SortQueueBy(QueueSortKey.DownloadTime);
+        foreach (var i in new[] { a, b, c, failed }) vm.DownloadItems.Remove(i);
+        try { Directory.Delete(root, true); } catch { }
+
+        return ok;
+    }
+
+    /// <summary>从语言资源取文案（新方法里不能用别处的局部函数）。</summary>
+    private static string Res(string key)
+        => Application.Current.TryFindResource(key) as string ?? key;
+
+    /// <summary>模拟点击某个表头（按表头文字找，找不到就跳过）。</summary>
+    private static void ClickHeader(ListView list, string headerText)
+    {
+        var header = FindDescendant<GridViewColumnHeader>(list, h => (h.Content as string) == headerText);
+        header?.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, header));
     }
 
     /// <summary>

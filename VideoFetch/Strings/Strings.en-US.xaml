@@ -30,6 +30,11 @@
     <sys:String x:Key="Error_UnsupportedURL">Unsupported URL. Supported: PornHub, xvideos, xnxx</sys:String>
     <sys:String x:Key="Label_OutputFolder">Output Folder:</sys:String>
     <sys:String x:Key="Btn_BrowseFolder">Browse...</sys:String>
+    <sys:String x:Key="Queue_SortFormat">Sort: {0} {1}</sys:String>
+    <sys:String x:Key="Btn_DeleteFiles">🗑 Delete file(s) ({0})</sys:String>
+    <sys:String x:Key="Tip_DeleteFiles">Delete the downloaded files of the selected tasks (task records are kept)</sys:String>
+    <sys:String x:Key="Confirm_DeleteFiles">Delete {0} local file(s)?&#10;They will be removed permanently.</sys:String>
+    <sys:String x:Key="Confirm_DeleteFiles_Title">Delete local files</sys:String>
     <sys:String x:Key="Btn_OpenFolder">Open Folder</sys:String>
 
     <!-- ── Search tab ───────────────────────────────── -->

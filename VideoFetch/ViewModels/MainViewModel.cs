@@ -154,6 +154,118 @@ public partial class MainViewModel : ObservableObject
         UpdateIndices(list);
     }
 
+    // ── 下载队列：排序 ──────────────────────────────────────────────────
+
+    private QueueSortKey _queueSortKey = QueueSortKey.DownloadTime;
+    private bool _queueSortDescending = true;
+
+    /// <summary>当前排序列。</summary>
+    public QueueSortKey QueueSortKey => _queueSortKey;
+
+    /// <summary>当前是否降序。</summary>
+    public bool QueueSortDescending => _queueSortDescending;
+
+    /// <summary>工具栏上的"排序：下载时间 ↓"提示（表头也能点，但箭头不好塞进本地化文案里）。</summary>
+    public string QueueSortLabel
+        => string.Format(LanguageService.GetString("Queue_SortFormat"),
+            LanguageService.GetString(HeaderResourceKey(_queueSortKey)),
+            _queueSortDescending ? "↓" : "↑");
+
+    /// <summary>
+    /// 点表头排序：同一列再点一次反向，换列则用该列的"自然方向"
+    /// （时间/大小/时长/进度 从大到小，文字/状态 从小到大）。
+    /// </summary>
+    public void SortQueueBy(QueueSortKey key)
+    {
+        if (_queueSortKey == key)
+        {
+            _queueSortDescending = !_queueSortDescending;
+        }
+        else
+        {
+            _queueSortKey = key;
+            _queueSortDescending = key is QueueSortKey.DownloadTime or QueueSortKey.Size
+                or QueueSortKey.Duration or QueueSortKey.Progress;
+        }
+
+        OnPropertyChanged(nameof(QueueSortKey));
+        OnPropertyChanged(nameof(QueueSortDescending));
+        OnPropertyChanged(nameof(QueueSortLabel));
+        ApplyQueueSort();
+    }
+
+    private void ApplyQueueSort()
+    {
+        if (QueueItemsView is not ListCollectionView view) return;
+
+        view.SortDescriptions.Clear();
+        view.SortDescriptions.Add(new SortDescription(
+            SortPropertyName(_queueSortKey),
+            _queueSortDescending ? ListSortDirection.Descending : ListSortDirection.Ascending));
+        view.Refresh();
+    }
+
+    private static string SortPropertyName(QueueSortKey key) => key switch
+    {
+        QueueSortKey.Title => nameof(DownloadItem.Title),
+        QueueSortKey.Duration => nameof(DownloadItem.DurationSeconds),
+        QueueSortKey.Size => nameof(DownloadItem.FileSize),
+        QueueSortKey.Progress => nameof(DownloadItem.Progress),
+        QueueSortKey.Status => nameof(DownloadItem.State),
+        _ => nameof(DownloadItem.DownloadTime)
+    };
+
+    private static string HeaderResourceKey(QueueSortKey key) => key switch
+    {
+        QueueSortKey.Title => "Queue_Header_Title",
+        QueueSortKey.Duration => "Queue_Header_Duration",
+        QueueSortKey.Size => "Queue_Header_Size",
+        QueueSortKey.Progress => "Queue_Header_Progress",
+        QueueSortKey.Status => "Queue_Header_Status",
+        _ => "Queue_Header_DownloadTime"
+    };
+
+    // ── 下载队列：多选删除文件 ──────────────────────────────────────────
+
+    private readonly List<DownloadItem> _queueSelection = new();
+
+    /// <summary>当前选中的、可以删除本地文件的任务数（驱动批量删除按钮）。</summary>
+    [ObservableProperty]
+    private int _deletableSelectionCount;
+
+    /// <summary>批量删除按钮文案（带数量）。</summary>
+    public string DeleteFilesText
+        => string.Format(LanguageService.GetString("Btn_DeleteFiles"), DeletableSelectionCount);
+
+    partial void OnDeletableSelectionCountChanged(int value)
+        => OnPropertyChanged(nameof(DeleteFilesText));
+
+    /// <summary>ListView 的选中项变了（SelectedItems 不能直接绑定，由视图转过来）。</summary>
+    public void UpdateQueueSelection(IEnumerable<DownloadItem> selected)
+    {
+        _queueSelection.Clear();
+        _queueSelection.AddRange(selected);
+        DeletableSelectionCount = _queueSelection.Count(i => i.CanDeleteFile);
+    }
+
+    /// <summary>
+    /// 批量删除选中任务的本地文件。只处理真正有文件的已完成任务，
+    /// 其余（下载中/失败/回收站）跳过。确认框由视图负责，这里只管干活。
+    /// </summary>
+    [RelayCommand]
+    private void DeleteSelectedFiles()
+    {
+        var targets = _queueSelection.Where(i => i.CanDeleteFile).ToList();
+        if (targets.Count == 0) return;
+
+        foreach (var item in targets)
+            DeleteLocalFile(item);
+
+        UpdateQueueSelection(_queueSelection.ToList());
+        RefreshQueueStats();
+        RefreshSearchMarks();
+    }
+
     /// <summary>
     /// 搜索页是否显示时长下拉框（仅支持的站点）。
     /// </summary>
@@ -306,13 +418,9 @@ public partial class MainViewModel : ObservableObject
         QueueItemsView = CollectionViewSource.GetDefaultView(_queue.Items);
         QueueItemsView.Filter = FilterDownloadItem;
 
-        // 最新下载的排最上面（排序键 = 完成时刻，未完成时是入队时刻）。
-        // 放在视图上而不是底层集合：底层顺序保持写入顺序，去重/遍历逻辑不受影响。
-        if (QueueItemsView is ListCollectionView queueView)
-        {
-            queueView.SortDescriptions.Add(
-                new SortDescription(nameof(DownloadItem.DownloadTime), ListSortDirection.Descending));
-        }
+        // 默认按下载时间倒序（最新的在最上面）。排序放在视图上而不是底层集合：
+        // 底层顺序保持写入顺序，去重/遍历逻辑不受影响。
+        ApplyQueueSort();
 
         // Keep IsQueueEmpty in sync + track item state changes for the filter view
         DownloadItems.CollectionChanged += DownloadItems_CollectionChanged;

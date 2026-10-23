@@ -30,6 +30,11 @@
     <sys:String x:Key="Error_UnsupportedURL">不支持的链接。支持：PornHub、xvideos、xnxx</sys:String>
     <sys:String x:Key="Label_OutputFolder">保存目录：</sys:String>
     <sys:String x:Key="Btn_BrowseFolder">浏览...</sys:String>
+    <sys:String x:Key="Queue_SortFormat">排序：{0} {1}</sys:String>
+    <sys:String x:Key="Btn_DeleteFiles">🗑 删除文件 ({0})</sys:String>
+    <sys:String x:Key="Tip_DeleteFiles">删除选中任务已下载的本地文件（任务记录保留）</sys:String>
+    <sys:String x:Key="Confirm_DeleteFiles">确定删除选中的 {0} 个本地文件吗？&#10;文件会被直接删除，无法恢复。</sys:String>
+    <sys:String x:Key="Confirm_DeleteFiles_Title">删除本地文件</sys:String>
     <sys:String x:Key="Btn_OpenFolder">打开文件夹</sys:String>
 
     <!-- ── Search tab ───────────────────────────────── -->
