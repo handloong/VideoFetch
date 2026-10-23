@@ -25,8 +25,16 @@ public partial class VideoPlayerWindow : Window
     private bool _isSeeking;
     private bool _isMediaUpdating;
 
-    /// <summary>已经请求播放，但还在等窗口加载 / 媒体打开。</summary>
+    /// <summary>
+    /// 已经请求播放、但还没确认"真的动起来了"。
+    ///
+    /// 不能一调 Play() 就当成功：窗口刚显示时 MediaElement 偶尔会收下命令却不推进，
+    /// 表现就是画面停在第一帧，拖一下进度条才播。这里靠定时器确认位置有没有变，
+    /// 没变就再踹一脚（最多 3 次）。
+    /// </summary>
     private bool _pendingPlay;
+
+    private int _playAttempts;
 
     /// <summary>
     /// 播放/暂停图标由模板 DataTrigger 绑定此属性驱动，
@@ -74,6 +82,10 @@ public partial class VideoPlayerWindow : Window
 
         // 窗口真正显示出来以后才可能开始播（MediaElement 不在视觉树里时 Play 会丢）
         Loaded += (_, _) => { _timer.Start(); StartPlaybackIfReady(); };
+
+        // 窗口"已经画出来一帧"之后再补一次：Loaded 阶段 MediaElement 偶尔还没渲染表面，
+        // Play 会被吞掉。这里再踹一脚是安全的（已经在播时是空操作）。
+        ContentRendered += (_, _) => StartPlaybackIfReady();
         Closed += (_, _) =>
         {
             _timer.Stop();
@@ -97,6 +109,7 @@ public partial class VideoPlayerWindow : Window
         Title = "VideoFetch Player — " + Path.GetFileName(filePath);
 
         _pendingPlay = true;
+        _playAttempts = 0;
         Media.Source = new Uri(filePath);
 
         StartPlaybackIfReady();
@@ -113,7 +126,6 @@ public partial class VideoPlayerWindow : Window
     {
         if (!_pendingPlay || !IsLoaded) return;
 
-        _pendingPlay = false;
         Media.Play();
         IsPlaying = true;
     }
@@ -145,10 +157,17 @@ public partial class VideoPlayerWindow : Window
         }
     }
 
-    private void Media_MediaOpened(object sender, RoutedEventArgs e) => NotifyMediaOpened();
+    private void Media_MediaOpened(object sender, RoutedEventArgs e)
+    {
+        var length = Media.NaturalDuration.HasTimeSpan ? Media.NaturalDuration.TimeSpan : TimeSpan.Zero;
+        AppLog.Info($"播放器：媒体已打开 {Path.GetFileName(Media.Source?.LocalPath ?? "")}" +
+                    $"（{length.TotalSeconds:0} 秒，播放中={IsPlaying}）");
+        NotifyMediaOpened();
+    }
 
     private void Media_MediaEnded(object sender, RoutedEventArgs e)
     {
+        _pendingPlay = false;
         IsPlaying = false;
         Media.Stop();
     }
@@ -157,11 +176,32 @@ public partial class VideoPlayerWindow : Window
     {
         IsPlaying = false;
         _pendingPlay = false;
+        AppLog.Warn($"播放器：打开失败 {Media.Source} — {e.ErrorException?.Message}");
         TimeLabel.Text = "播放失败";
     }
 
     private void UpdateTimeDisplay()
     {
+        // 看门狗：请求过播放，但位置一直没动 → 再发一次 Play（最多 3 次）。
+        // 位置一旦走动就认为真的播起来了。
+        if (_pendingPlay && Media.NaturalDuration.HasTimeSpan && !Media.Position.Equals(TimeSpan.Zero))
+        {
+            _pendingPlay = false;
+        }
+        else if (_pendingPlay && _playAttempts < 3 && Media.NaturalDuration.HasTimeSpan)
+        {
+            _playAttempts++;
+            AppLog.Info($"播放器未自动开播，重试第 {_playAttempts} 次（position={Media.Position.TotalMilliseconds:0}ms）");
+            Media.Play();
+            IsPlaying = true;
+        }
+        else if (_pendingPlay && !Media.NaturalDuration.HasTimeSpan && _playAttempts < 3)
+        {
+            // 媒体还没打开：够 1.5 秒还没开就再踹一脚
+            _playAttempts++;
+            Media.Play();
+        }
+
         if (_isSeeking || !Media.NaturalDuration.HasTimeSpan) return;
 
         var pos = Media.Position;
