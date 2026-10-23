@@ -275,7 +275,7 @@ public class PinSeParser : ISiteParser
         return m.Success ? m.Groups[1].Value : string.Empty;
     }
 
-    private static string ExtractPageTitle(string html)
+    public static string ExtractPageTitle(string html)
     {
         // 优先用 og:title / 结构化数据里的 name：<title> 会带上
         // " - 作者 - 91PinSe" 的尾巴，而这个标题会被直接当作文件名。
@@ -289,8 +289,10 @@ public class PinSeParser : ISiteParser
                 RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (!hit.Success) continue;
 
+            // 不能用 Regex.Unescape：它按"正则字面量"反转义，标题里的 \q 会抛
+            // ArgumentException（整个详情页解析失败）， 会变成退格控制字符。
             var candidate = ParserHelper.DecodeEntities(
-                Regex.Unescape(hit.Groups[1].Value)).Trim();
+                ParserHelper.DecodeJsonEscapes(hit.Groups[1].Value)).Trim();
             candidate = StripSiteSuffix(candidate);
             if (!string.IsNullOrWhiteSpace(candidate))
                 return SanitizeFileName(candidate);
@@ -573,8 +575,10 @@ public class PinSeParser : ISiteParser
 
         // Extract each <article class="video-card group/card"> ... </article> block.
         // Use non-greedy match to capture one card at a time.
+        // class 里可能追加别的类（is-ad / hover:*），attribute 顺序也可能变 ——
+        // 早先要求 class 逐字等于 "video-card group/card"，站点一加类就整站无结果。
         var cardMatches = Regex.Matches(html,
-            @"<article\s+class=""video-card\s+group/card"">(.*?)</article>",
+            @"<article\s+[^>]*class=""[^""]*\bvideo-card\b[^""]*""[^>]*>(.*?)</article>",
             RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
         foreach (Match cardMatch in cardMatches)

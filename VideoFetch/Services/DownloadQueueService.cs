@@ -26,6 +26,7 @@ public class DownloadQueueService
     private readonly IUiDispatcher _ui;
     private readonly SemaphoreSlim _concurrencySemaphore;
     private readonly PendingQueueStore _pendingStore;
+    private readonly Action<string> _openFolder;
     private int _currentMaxConcurrent;
 
     public ObservableCollection<DownloadItem> Items { get; } = new();
@@ -47,7 +48,8 @@ public class DownloadQueueService
         IVideoInfoProvider infoProvider,
         Func<IDownloadRunner> runnerFactory,
         IUiDispatcher ui,
-        PendingQueueStore? pendingStore = null)
+        PendingQueueStore? pendingStore = null,
+        Action<string>? openFolder = null)
     {
         _settings = settings;
         _recordService = recordService;
@@ -55,6 +57,8 @@ public class DownloadQueueService
         _runnerFactory = runnerFactory;
         _ui = ui;
         _pendingStore = pendingStore ?? new PendingQueueStore();
+        _openFolder = openFolder ?? (path => System.Diagnostics.Process.Start(
+            "explorer.exe", $"/select,\"{path}\""));
         _currentMaxConcurrent = ClampConcurrency(settings.MaxConcurrentDownloads);
         // 上限必须给足：ApplySettings 会在运行中把并发数调高，用 Release 补额度。
         // 上限若等于初始值，Release 会抛 "Adding the specified count to the
@@ -317,6 +321,18 @@ public class DownloadQueueService
                 },
                 ct: token);
 
+            // 引擎在某些路径上会把取消当成成功返回（例如 ffmpeg 重封装期间取消），
+            // 这里必须复查一次：否则取消的任务会被标成"已完成"，还写进下载记录。
+            if (token.IsCancellationRequested)
+            {
+                if (IsCurrentRun())
+                {
+                    MarkCancelled(item);
+                    DeletePartialFile(item);
+                }
+                return;
+            }
+
             // HLS remux may have produced a different (mp4) file name
             if (!IsCurrentRun()) return;        // 结果已作废，别去覆写新一轮的状态
             item.OutputPath = finalPath;
@@ -349,11 +365,16 @@ public class DownloadQueueService
             // 提前写会把刚下完的任务当成"还在下载"，下次启动又下一遍。
             SavePending();
 
+            // 打开文件夹是"锦上添花"，失败绝不能把已完成的任务标成失败 ——
+            // 它以前在同一个 try 里，Process.Start 抛异常会被下面的 catch 接住，
+            // 于是刚下好的成品被 MarkFailed + DeletePartialFile 删掉。
             if (_settings.AutoOpenFolder)
-                System.Diagnostics.Process.Start("explorer.exe",
-                    $"/select,\"{item.OutputPath}\"");
+            {
+                try { _openFolder(item.OutputPath); }
+                catch (Exception openEx) { AppLog.Warn($"打开文件夹失败（不影响下载结果）: {openEx.Message}"); }
+            }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex) when (token.IsCancellationRequested)
         {
             if (IsCurrentRun())
             {
@@ -363,6 +384,10 @@ public class DownloadQueueService
         }
         catch (Exception ex)
         {
+            // 走到这里包含"token 没被取消却抛 OCE"的情况 —— 典型是 HttpClient 的
+            // 60 秒超时（TaskCanceledException 继承自 OperationCanceledException）。
+            // 以前它会被上面那个 catch 当成"用户取消"，失败原因整个丢掉，
+            // 用户看到的是"已取消"，还以为是误触。
             if (IsCurrentRun())
             {
                 MarkFailed(item, ex);
@@ -379,6 +404,8 @@ public class DownloadQueueService
     private void MarkCancelled(DownloadItem item)
     {
         item.Speed = string.Empty;
+        item.Speed = string.Empty;
+        item.Note = string.Empty;   // 不清的话状态列永远停在"正在取消…"
         item.State = DownloadState.Cancelled;
         item.IsCancelled = true;
         item.HasFailed = false;
@@ -390,6 +417,7 @@ public class DownloadQueueService
     private void MarkFailed(DownloadItem item, Exception ex)
     {
         item.Speed = string.Empty;
+        item.Note = string.Empty;   // 同上：清掉"正在取消…"，让失败原因能显示出来
         item.State = DownloadState.Failed;
         item.LastError = ex.Message;
         item.HasFailed = true;

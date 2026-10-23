@@ -63,19 +63,30 @@ public class PornHubParser : ISiteParser
         catch { return null; }
     }
 
-    private static void ExtractStreams(string html, VideoInfo info)
+    public static void ExtractStreams(string html, VideoInfo info)
     {
         var flashVarsMatch = Regex.Match(html, @"var\s+flashvars_\w+\s*=\s*(\{.*?\});", RegexOptions.Singleline);
         if (!flashVarsMatch.Success) return;
 
-        var json = JObject.Parse(flashVarsMatch.Groups[1].Value);
-        var mediaDefs = json["mediaDefinitions"] as JArray;
+        // flashvars 里可能是 JS 对象字面量（尾逗号、单引号、undefined），
+        // 直接 Parse 会抛；媒体列表里也可能混入 null 或字符串。这里出错只意味着
+        // "这页解析不到流"，不应该让标题/时长/缩略图跟着一起丢。
+        JArray? mediaDefs;
+        try
+        {
+            mediaDefs = JObject.Parse(flashVarsMatch.Groups[1].Value)["mediaDefinitions"] as JArray;
+        }
+        catch
+        {
+            return;
+        }
         if (mediaDefs == null) return;
 
-        foreach (JObject def in mediaDefs)
+        foreach (var token in mediaDefs)
         {
+            if (token is not JObject def) continue;
             var format = def["format"]?.ToString() ?? "";
-            var quality = ReadScalar(def["quality"]);
+            var quality = ParserHelper.ReadScalar(def["quality"]);
             var videoUrl = def["videoUrl"]?.ToString() ?? "";
             if (string.IsNullOrEmpty(videoUrl)) continue;
 
@@ -138,7 +149,7 @@ public class PornHubParser : ISiteParser
 
             var href = linkNode.GetAttributeValue("href", "");
             if (string.IsNullOrEmpty(href)) continue;
-            var url = href.StartsWith("http") ? href : "https://www.pornhub.com" + href;
+            var url = ParserHelper.AbsoluteUrl("https://www.pornhub.com/", href);
 
             var titleNode = item.SelectSingleNode(".//span[contains(@class,'title')]//a")
                             ?? linkNode;

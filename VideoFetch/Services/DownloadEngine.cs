@@ -33,8 +33,19 @@ public class DownloadEngine
     /// so the output extension can be chosen before the download starts).
     /// </summary>
     public static bool IsHlsUrl(string streamUrl)
-        => streamUrl.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
-           || streamUrl.Contains("hls", StringComparison.OrdinalIgnoreCase);
+    {
+        if (string.IsNullOrWhiteSpace(streamUrl)) return false;
+
+        // 只看路径/查询里的 .m3u8：早先还判了子串 "hls"，结果
+        // "…/hls-off/movie.mp4" 或 "?hls=0" 会被当成播放列表，
+        // 一次直链下载变成"解析 m3u8"，最后全是 404 或拼出垃圾文件。
+        var path = streamUrl;
+        var q = streamUrl.IndexOf('?', StringComparison.Ordinal);
+        if (q > 0) path = streamUrl[..q];
+
+        return path.Contains(".m3u8", StringComparison.OrdinalIgnoreCase)
+               || streamUrl.Contains(".m3u8?", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Download a video from the given stream URL.
@@ -458,7 +469,12 @@ public class DownloadEngine
                         ? $"{speedBps / 1_000_000.0:F1} MB/s"
                         : $"{speedBps / 1_000.0:F0} KB/s";
 
-                    var percent = totalBytes > 0 ? (double)downloaded / totalBytes * 100.0 : -1;
+                    // 封顶 100：Content-Length 与实际字节数不符时（分块/代理改写）
+                    // 会出现 120% 这种值，队列那边看到 >=100 就把状态写成"已完成"，
+                    // 于是同一行既显示已完成又还挂着"取消"按钮。
+                    var percent = totalBytes > 0
+                        ? Math.Min(100.0, (double)downloaded / totalBytes * 100.0)
+                        : -1;
                     onProgress?.Invoke(percent, speedStr);
                 }
             }

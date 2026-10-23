@@ -36,6 +36,10 @@ internal static class DownloadQueueTests
         await Safe("concurrency", ConcurrencyLimitAsync);
         await Safe("concurrency-raise", RaiseConcurrencyAsync);
         await Safe("file-size", FileSizeAsync);
+        await Safe("timeout", TimeoutIsFailureAsync);
+        await Safe("runner-swallows-cancel", RunnerIgnoringCancelAsync);
+        await Safe("cancel-note", CancelClearsNoteAsync);
+        await Safe("autoopen-fails", AutoOpenFailureKeepsResultAsync);
         await Safe("pending", PendingAsync);
         await Safe("resume", ResumeAfterRestartAsync);
         await Safe("failure", FailureIsRecordedAsync);
@@ -312,6 +316,89 @@ internal static class DownloadQueueTests
         {
             h1.Dispose();   // 这时候才删临时目录（h1 的任务还卡在闸门上）
         }
+    }
+
+    /// <summary>
+    /// HttpClient 的 60 秒超时抛的是 TaskCanceledException（继承自
+    /// OperationCanceledException）。它不是"用户取消"，必须记成失败并把原因留下，
+    /// 否则用户看到"已取消"、LastError 为空，误以为是自己点了取消。
+    /// </summary>
+    private static async Task TimeoutIsFailureAsync()
+    {
+        using var h = new Harness();
+        h.Provider.FetchError = _ => new TaskCanceledException("timeout", new TimeoutException());
+
+        var item = await h.EnqueueAndWaitAsync(Info("https://site.test/v/timeout", "超时任务"));
+
+        Check("timeout: 记为失败而不是取消",
+            item.HasFailed && !item.IsCancelled && item.State == DownloadState.Failed,
+            $"{item.State}/failed={item.HasFailed}/cancelled={item.IsCancelled}");
+        Check("timeout: 失败原因有内容", item.LastError.Length > 0, item.LastError);
+    }
+
+    /// <summary>
+    /// 引擎某些路径会把取消当成成功返回（例如 ffmpeg 重封装期间取消）。
+    /// 队列拿到返回值后必须复查 token —— 否则取消的任务会被标成"已完成"。
+    /// </summary>
+    private static async Task RunnerIgnoringCancelAsync()
+    {
+        using var h = new Harness();
+
+        // 故意不传 ct：模拟"引擎吞掉了取消"
+        h.Runner.Handler = async (_, path, _) =>
+        {
+            await Task.Delay(300);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, "ok");
+            return path;
+        };
+
+        h.Queue.Enqueue(Info("https://site.test/v/swallow", "取消被吞"), QualityKey);
+        await WaitUntilAsync(() => h.Queue.Items.Count == 1 && h.Queue.Items[0].IsDownloading);
+
+        var item = h.Queue.Items[0];
+        h.Queue.TryCancel(item);
+
+        await WaitUntilAsync(() => !item.IsActive, 10000);
+        Check("runner 吞取消: 不能被标成已完成", !item.IsCompleted, item.State.ToString());
+        Check("runner 吞取消: 状态是已取消", item.State == DownloadState.Cancelled, item.State.ToString());
+        Check("runner 吞取消: 不写下载记录", h.Records.GetByUrl(item.Url) == null);
+    }
+
+    /// <summary>取消流程为了提示"正在取消…"写了 Note，结束态必须清掉，否则永远盖住真实状态。</summary>
+    private static async Task CancelClearsNoteAsync()
+    {
+        using var h = new Harness();
+        var gate = h.HoldRunner();
+
+        h.Queue.Enqueue(Info("https://site.test/v/note", "取消后清 Note"), QualityKey);
+        await WaitUntilAsync(() => h.Queue.Items.Count == 1 && h.Queue.Items[0].IsDownloading);
+
+        var item = h.Queue.Items[0];
+        h.Queue.TryCancel(item);
+        await WaitUntilAsync(() => !item.IsActive, 5000);
+
+        Check("cancel-note: 结束态 Note 为空", item.Note.Length == 0, $"'{item.Note}'");
+        Check("cancel-note: 状态显示已取消",
+            item.Status == LanguageService.GetString("State_Cancelled"), item.Status);
+
+        gate.ReleaseAll();
+    }
+
+    /// <summary>
+    /// "下载完成后自动打开文件夹"失败（PATH 缺 System32 / 安全软件拦截）时
+    /// 不能把已完成的任务改成失败，更不能删掉刚下好的文件。
+    /// </summary>
+    private static async Task AutoOpenFailureKeepsResultAsync()
+    {
+        using var h = new Harness(openFolder: _ => throw new InvalidOperationException("explorer blocked"));
+        h.Settings.AutoOpenFolder = true;
+
+        var item = await h.EnqueueAndWaitAsync(Info("https://site.test/v/open", "打开文件夹失败"));
+
+        Check("autoopen: 仍然是已完成", item.IsCompleted && !item.HasFailed, $"{item.State}");
+        Check("autoopen: 成品文件还在", File.Exists(item.OutputPath), item.OutputPath);
+        Check("autoopen: 状态是 Completed", item.State == DownloadState.Completed, item.State.ToString());
     }
 
     /// <summary>文件大小：永远用最大单位（1.2G / 12.3M），未知用占位符。</summary>
@@ -856,7 +943,7 @@ internal static class DownloadQueueTests
         public readonly DownloadQueueService Queue;
         public readonly string PendingDir;
 
-        public Harness(int maxConcurrent = 2)
+        public Harness(int maxConcurrent = 2, Action<string>? openFolder = null)
         {
             Root = Path.Combine(Path.GetTempPath(), "vf-dlq-" + Guid.NewGuid().ToString("N")[..8]);
             Directory.CreateDirectory(Root);
@@ -874,7 +961,8 @@ internal static class DownloadQueueTests
             // 每个 Harness 构造时重置一次就够（"重启"用例要的就是同一目录）
             PendingDir = Path.Combine(Root, "pending");
             PendingQueueStore.Directory = PendingDir;
-            Queue = new DownloadQueueService(Settings, Records, Provider, () => Runner, new ImmediateDispatcher());
+            Queue = new DownloadQueueService(Settings, Records, Provider, () => Runner,
+                new ImmediateDispatcher(), openFolder: openFolder);
         }
 
         /// <summary>入队并等到任务结束。</summary>
@@ -957,15 +1045,22 @@ internal static class DownloadQueueTests
         public int FetchCount;
         public int ResolveCount;
 
+        /// <summary>测试用：让抓取/解析流直接抛异常（模拟超时/站点错误）。</summary>
+        public Func<string, Exception>? FetchError;
+
         public Task<VideoInfo> FetchAsync(string url, CancellationToken ct = default)
         {
             FetchCount++;
+            if (FetchError != null) throw FetchError(url);
             return Task.FromResult(Info(url, "fake"));
         }
 
         public Task<string> ResolveStreamUrlAsync(VideoInfo info, string qualityKey, CancellationToken ct = default)
         {
             ResolveCount++;
+            // 入队时已经带着 VideoInfo，FetchAsync 不会被调用；
+            // 解析流这一步每次都会走，用它来注入异常最可靠
+            if (FetchError != null) throw FetchError(info.Url);
             return Task.FromResult("https://cdn.test/resolved.m3u8");
         }
     }

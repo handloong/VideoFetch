@@ -449,6 +449,8 @@ public class SearchResult : System.ComponentModel.INotifyPropertyChanged
     private string _author = string.Empty;
     private string _duration = string.Empty;
     private int _durationSeconds;
+    private bool _isAlreadyDownloaded;
+    private string _localFilePath = string.Empty;
     private int _index;
     private string _thumbnailUrl = string.Empty;
     private SiteType _site;
@@ -512,13 +514,31 @@ public class SearchResult : System.ComponentModel.INotifyPropertyChanged
     /// Whether this video has been downloaded before (set by ViewModel from DB).
     /// Used for visual indicator (green tint) and duplicate prevention.
     /// </summary>
-    public bool IsAlreadyDownloaded { get; set; }
+    public bool IsAlreadyDownloaded
+    {
+        get => _isAlreadyDownloaded;
+        set
+        {
+            if (_isAlreadyDownloaded == value) return;
+            _isAlreadyDownloaded = value;
+            OnPropertyChanged(nameof(IsAlreadyDownloaded));
+        }
+    }
 
     /// <summary>
     /// Local file path — set when IsAlreadyDownloaded is true.
     /// Used for double-click to play local file with default player.
     /// </summary>
-    public string LocalFilePath { get; set; } = string.Empty;
+    public string LocalFilePath
+    {
+        get => _localFilePath;
+        set
+        {
+            if (_localFilePath == value) return;
+            _localFilePath = value;
+            OnPropertyChanged(nameof(LocalFilePath));
+        }
+    }
 
     /// <summary>
     /// Decoded thumbnail (small, frozen) — loaded in the background after the

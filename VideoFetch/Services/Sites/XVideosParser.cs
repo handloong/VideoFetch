@@ -18,75 +18,94 @@ public class XVideosParser : ISiteParser
 
     public async Task<VideoInfo?> FetchVideoInfoAsync(string url, CancellationToken ct = default)
     {
-        var info = new VideoInfo { Url = url, Site = Site };
         try
         {
             var resp = await HttpClientFactory.GetClient().GetAsync(url, ct);
             if (!resp.IsSuccessStatusCode) return null;
             var html = await resp.Content.ReadAsStringAsync(ct);
-            var doc = new HtmlAgilityPack.HtmlDocument();
-            doc.LoadHtml(html);
 
-            // Title
-            var titleNode = doc.DocumentNode.SelectSingleNode("//meta[@property='og:title']")
-                            ?? doc.DocumentNode.SelectSingleNode("//title");
-            if (titleNode != null)
-            {
-                var raw = titleNode.GetAttributeValue("content", "") ?? titleNode.InnerText;
-                raw = ParserHelper.DecodeEntities(raw ?? "");
-                raw = Regex.Replace(raw, @"\s*-\s*XVIDEOS?\.COM\s*$", "", RegexOptions.IgnoreCase);
-                info.Title = raw.Trim();
-            }
-
-            // Author
-            var authorNode = doc.DocumentNode.SelectSingleNode("//a[contains(@href,'/model/') or contains(@href,'/channels/')]");
-            if (authorNode != null) info.Author = ParserHelper.DecodeEntities(authorNode.InnerText?.Trim() ?? "");
-
-            // Duration
-            var durNode = doc.DocumentNode.SelectSingleNode("//span[contains(@class,'duration')]")
-                            ?? doc.DocumentNode.SelectSingleNode("//meta[@property='video:duration']");
-            if (durNode != null)
-            {
-                var dur = durNode.GetAttributeValue("content", "") ?? durNode.InnerText;
-                info.Duration = dur.Trim();
-            }
-
-            // Thumbnail
-            var thumbNode = doc.DocumentNode.SelectSingleNode("//meta[@property='og:image']");
-            if (thumbNode != null) info.ThumbnailUrl = thumbNode.GetAttributeValue("content", "");
-
-            // Stream URLs from flashvars
-            var flashvarsMatch = Regex.Match(html, @"var\s+flashvars_\w+\s*=\s*(\{.*?\});", RegexOptions.Singleline);
-            if (flashvarsMatch.Success)
-            {
-                try
-                {
-                    var json = Newtonsoft.Json.Linq.JObject.Parse(flashvarsMatch.Groups[1].Value);
-                    var mediaDefs = json["mediaDefinitions"] as Newtonsoft.Json.Linq.JArray;
-                    if (mediaDefs != null)
-                    {
-                        foreach (Newtonsoft.Json.Linq.JObject def in mediaDefs)
-                        {
-                            var format = def["format"]?.ToString() ?? "";
-                            var quality = def["quality"]?.ToString() ?? "unknown";
-                            var videoUrl = def["videoUrl"]?.ToString() ?? "";
-                            if (string.IsNullOrEmpty(videoUrl)) continue;
-                            info.StreamUrls[$"{format}_{quality}"] = videoUrl;
-                            info.Qualities.Add(new QualityOption($"{quality}p ({format.ToUpper()})", $"{format}_{quality}"));
-                        }
-                    }
-                }
-                catch { }
-            }
-
-            // Fallback: look for setVideoHLS/setVideoUrlHigh in HTML
-            ExtractStreams(html, info);
+            // 解析本身是纯函数，HTTP 只负责把 html 取回来
+            var info = ParseDetailHtml(html, url);
 
             // 把不透明的 "hls" 展开成真实清晰度档位（720p/480p/360p/250p）
             await ExpandHlsRenditionsAsync(info, ct);
             return info;
         }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// 详情页 HTML → VideoInfo（纯函数，不含任何网络请求，方便离线测试）。
+    /// </summary>
+    public static VideoInfo ParseDetailHtml(string html, string url)
+    {
+        var info = new VideoInfo { Url = url, Site = SiteType.XVideos };
+        var doc = new HtmlAgilityPack.HtmlDocument();
+        doc.LoadHtml(html);
+
+        // Title：og:title 有 content 属性，<title> 没有 —— 必须区分，不能靠 ??
+        var titleNode = doc.DocumentNode.SelectSingleNode("//meta[@property='og:title']")
+                        ?? doc.DocumentNode.SelectSingleNode("//title");
+        if (titleNode != null)
+        {
+            var raw = ParserHelper.DecodeEntities(ParserHelper.GetAttrOrInner(titleNode, "content"));
+            raw = Regex.Replace(raw, @"\s*-\s*XVIDEOS?\.COM\s*$", "", RegexOptions.IgnoreCase);
+            info.Title = raw.Trim();
+        }
+
+        // Author
+        var authorNode = doc.DocumentNode.SelectSingleNode("//a[contains(@href,'/model/') or contains(@href,'/channels/')]");
+        if (authorNode != null) info.Author = ParserHelper.DecodeEntities(authorNode.InnerText?.Trim() ?? "");
+
+        // Duration：优先取 og 的 content，其次 span 的文本
+        var durNode = doc.DocumentNode.SelectSingleNode("//meta[@property='video:duration']")
+                      ?? doc.DocumentNode.SelectSingleNode("//span[contains(@class,'duration')]");
+        if (durNode != null)
+            info.Duration = ParserHelper.DecodeEntities(ParserHelper.GetAttrOrInner(durNode, "content")).Trim();
+
+        // Thumbnail
+        var thumbNode = doc.DocumentNode.SelectSingleNode("//meta[@property='og:image']");
+        if (thumbNode != null) info.ThumbnailUrl = thumbNode.GetAttributeValue("content", "");
+
+        // Stream URLs from flashvars
+        var flashvarsMatch = Regex.Match(html, @"var\s+flashvars_\w+\s*=\s*(\{.*?\});", RegexOptions.Singleline);
+        if (flashvarsMatch.Success)
+        {
+            try
+            {
+                var json = Newtonsoft.Json.Linq.JObject.Parse(flashvarsMatch.Groups[1].Value);
+                if (json["mediaDefinitions"] is Newtonsoft.Json.Linq.JArray mediaDefs)
+                {
+                    foreach (var token in mediaDefs)
+                    {
+                        if (token is not Newtonsoft.Json.Linq.JObject def) continue;
+
+                        var format = ParserHelper.ReadScalar(def["format"]);
+                        var quality = ParserHelper.ReadScalar(def["quality"]);
+                        if (quality.Length == 0) quality = "unknown";
+                        var videoUrl = ParserHelper.ReadScalar(def["videoUrl"]);
+                        if (string.IsNullOrEmpty(videoUrl)) continue;
+
+                        AddStream(info, $"{format}_{quality}", videoUrl,
+                            $"{quality}p ({(format.Length > 0 ? format.ToUpperInvariant() : "?")})");
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Fallback: look for setVideoHLS/setVideoUrlHigh in HTML
+        ExtractStreams(html, info);
+        return info;
+    }
+
+    /// <summary>同 key 只留一条画质（hls 展开后会与 flashvars 里的档位重合）。</summary>
+    private static void AddStream(VideoInfo info, string key, string url, string label)
+    {
+        if (info.StreamUrls.ContainsKey(key)) return;
+        info.StreamUrls[key] = url;
+        if (!info.Qualities.Any(q => q.Value == key))
+            info.Qualities.Add(new QualityOption(label, key));
     }
 
     /// <summary>
@@ -315,7 +334,7 @@ public class XVideosParser : ISiteParser
 
             var href = linkNode.GetAttributeValue("href", "");
             if (string.IsNullOrEmpty(href)) continue;
-            var url = href.StartsWith("http") ? href : "https://www.xvideos.com" + href;
+            var url = ParserHelper.AbsoluteUrl("https://www.xvideos.com/", href);
 
             // Title: 优先用带 title 属性的 <a>（通常是缩略图那个链接），
             // 再退回链接内部的文字。

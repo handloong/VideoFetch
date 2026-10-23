@@ -432,7 +432,9 @@ public static class CategoryParsing
             searchFrom = idx + propertyName.Length;
 
             var open = html.IndexOf('[', searchFrom);
-            if (open < 0) yield break;
+            // 不能 yield break：页面里可能先出现一个无关的 "categories" 字面量
+            // （i18n 词条表之类），后面才是真正的分类数组。break 会把整个枚举结束掉。
+            if (open < 0) continue;
 
             var end = FindArrayEnd(html, open);
             if (end < 0) continue;

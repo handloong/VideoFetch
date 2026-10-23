@@ -144,6 +144,9 @@ internal static class UiSmokeTest
         // 8) 结果列表排序（时长 长→短）
         ok &= CheckResultSort(vm);
 
+        // 8a) 设置落盘、CanExecute、切站点清结果、已下载标记通知
+        ok &= CheckSettingsAndStateSync(vm);
+
         // 8b) 结果列表：Ctrl 点选 / Shift 连选 等同勾选
         ok &= CheckResultRowSelection(vm);
 
@@ -256,6 +259,88 @@ internal static class UiSmokeTest
         // 复位，避免把测试数据写进配置
         vm.ResultSort = ResultSort.Default;
         vm.SearchResults.Clear();
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 四个"状态同步"类的老问题，都是用户能直接感知的：
+    ///   1. 保存设置时 Cookie 必须在落盘之前写回（否则提示成功、重启就丢）
+    ///   2. 抓取/搜索进行中，按钮要真的变灰（CanExecute 要跟着重算）
+    ///   3. 切搜索站点要清掉旧结果（否则旧站第 1 页 + 新站第 2 页拼在一起）
+    ///   4. IsAlreadyDownloaded 变了要通知界面（否则删了文件还显示"已下载"）
+    /// </summary>
+    private static bool CheckSettingsAndStateSync(MainViewModel vm)
+    {
+        var ok = true;
+
+        // ── 1) 保存设置：Cookie 要一起落盘 ──
+        var original = SettingsService.Directory;
+        var dir = Path.Combine(Path.GetTempPath(), "vf-settings-" + Guid.NewGuid().ToString("N")[..8]);
+        SettingsService.Directory = dir;
+        try
+        {
+            vm.CookieSite = SiteType.PinSe;
+            vm.CookieText = "session=abc123";
+            vm.SaveSettingsCommand.Execute(null);
+
+            var saved = new SettingsService().Load();
+            ok &= Check("settings: 保存时 Cookie 一起落盘",
+                saved.SiteCookies.TryGetValue("PinSe", out var ck) && ck == "session=abc123",
+                saved.SiteCookies.TryGetValue("PinSe", out var got) ? got : "(没有 PinSe)");
+        }
+        finally
+        {
+            SettingsService.Directory = original;
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
+        }
+
+        // ── 2) CanExecute 跟随 IsFetching / IsSearching ──
+        vm.UrlInput = "https://www.xvideos.com/video.abc/x";
+        ok &= Check("canexecute: 有 URL 时可抓取", vm.FetchCommand.CanExecute(null));
+
+        vm.IsFetching = true;
+        ok &= Check("canexecute: 抓取中不能再次抓取", !vm.FetchCommand.CanExecute(null));
+
+        vm.IsFetching = false;
+        vm.SearchResults.Add(new SearchResult
+        {
+            Title = "可批量", Url = "https://example.test/b1", Site = SiteType.XVideos, IsSelected = true
+        });
+        ok &= Check("canexecute: 有勾选可批量下载", vm.BatchDownloadCommand.CanExecute(null));
+
+        vm.IsSearching = true;
+        ok &= Check("canexecute: 搜索中批量按钮变灰", !vm.BatchDownloadCommand.CanExecute(null));
+
+        vm.IsSearching = false;
+        vm.SearchResults.Clear();
+        vm.UrlInput = string.Empty;
+
+        // ── 3) 切搜索站点要清掉旧结果 ──
+        vm.SearchSite = SiteType.PornHub;
+        for (var i = 1; i <= 2; i++)
+            vm.SearchResults.Add(new SearchResult
+            {
+                Title = $"旧站结果 {i}", Url = $"https://example.test/old{i}", Site = SiteType.PornHub
+            });
+        vm.HasMoreResults = true;
+
+        vm.SearchSite = SiteType.PinSe;
+        ok &= Check("search: 切站点后清空旧结果", vm.SearchResults.Count == 0,
+            vm.SearchResults.Count.ToString());
+        ok &= Check("search: 切站点后不再有下一页", !vm.HasMoreResults);
+
+        // ── 4) IsAlreadyDownloaded 要通知界面 ──
+        var item = new SearchResult { Title = "通知测试", Url = "https://example.test/n1" };
+        var hits = 0;
+        item.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SearchResult.IsAlreadyDownloaded)) hits++;
+        };
+        item.IsAlreadyDownloaded = true;
+        item.LocalFilePath = @"C:ideos
+1.mp4";
+        ok &= Check("notify: 已下载标记变化会通知界面", hits == 1, hits.ToString());
 
         return ok;
     }

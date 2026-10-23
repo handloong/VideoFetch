@@ -30,6 +30,7 @@ public partial class MainViewModel : ObservableObject
     private string _urlInput = string.Empty;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(FetchCommand))]
     private bool _isFetching;
 
     [ObservableProperty]
@@ -275,7 +276,20 @@ public partial class MainViewModel : ObservableObject
     public bool ShowCategoryDurationFilter => _infoService.SupportsDurationFilter(CategorySite);
 
     partial void OnSearchSiteChanged(SiteType value)
-        => OnPropertyChanged(nameof(ShowSearchDurationFilter));
+    {
+        OnPropertyChanged(nameof(ShowSearchDurationFilter));
+
+        // 切站点后旧结果已经没意义了：留着会出现"旧站点的第 1 页 + 新站点的第 2 页"，
+        // 「加载更多」还会用新站点的 site 去抓下一页，拼出一张混合表。
+        if (SearchResults.Count > 0)
+        {
+            foreach (var r in SearchResults) r.IsSelected = false;
+            SearchResults.Clear();
+            SelectedSearchResult = null;
+        }
+        HasMoreResults = false;
+        CurrentPage = 1;
+    }
 
     /// <summary>
     /// 切换时长筛选后立刻重跑当前视图，否则要用户再点一次才生效。
@@ -330,6 +344,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SearchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BatchDownloadCommand))]
     private bool _isSearching;
 
     /// <summary>
@@ -972,14 +987,17 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveSettingsAsync()
     {
+        // 先把界面上正在编辑的 Cookie 写回设置，**再**落盘。
+        // 顺序反了的话：Save 时内存里还是旧 Cookie，用户看到"保存成功"，
+        // 重启后才发现刚填的 Cookie 根本没存（本次会话却能生效，更容易误判）。
+        if (!string.IsNullOrWhiteSpace(CookieSite.ToString()))
+            Settings.SiteCookies[CookieSite.ToString()] = CookieText ?? string.Empty;
+
         var saved = _settingsService.Save(Settings);
         // Apply new settings to the long-lived queue service (never rebuild it:
         // rebuilding orphans in-flight downloads and breaks the Items binding)
         _queue.ApplySettings();
 
-        // 把界面上正在编辑的 Cookie 写回设置，再重建 HTTP 客户端
-        if (!string.IsNullOrWhiteSpace(CookieSite.ToString()))
-            Settings.SiteCookies[CookieSite.ToString()] = CookieText ?? string.Empty;
         HttpClientFactory.Configure(EffectiveProxyUrl(), Settings.SiteCookies);
 
         // 原来无论写盘成功与否都显示"保存成功"，磁盘满/无权限时用户完全不知情
