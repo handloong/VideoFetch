@@ -47,6 +47,8 @@ dotnet run
 
 ### 发布
 
+**每次推代码前都要打一个新标签** —— 推代码即发版，用 `release.bat`，不要直接 `git push`。
+
 推送 `v*` 标签即由 GitHub Actions（`.github/workflows/release.yml`）自动打包并发布 Release：
 
 ```bash
