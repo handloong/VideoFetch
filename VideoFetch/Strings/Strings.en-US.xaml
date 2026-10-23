@@ -132,6 +132,8 @@
     <sys:String x:Key="Btn_DeleteLocalFile">🗑 Delete File</sys:String>
     <sys:String x:Key="Btn_RestoreTask">Restore</sys:String>
     <sys:String x:Key="Btn_PurgeTask">Delete Forever</sys:String>
+    <sys:String x:Key="Btn_RetryAll">↻ Retry failed</sys:String>
+    <sys:String x:Key="Tip_RetryAll">Re-queue every failed or cancelled task (finished and trashed ones are left alone)</sys:String>
     <sys:String x:Key="Btn_CancelAll">⏹ Cancel all</sys:String>
     <sys:String x:Key="Btn_EmptyTrash">🗑 Empty Trash</sys:String>
 

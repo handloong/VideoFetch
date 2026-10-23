@@ -350,6 +350,30 @@ public class DownloadQueueService
     }
 
     /// <summary>
+    /// 一键重试：把所有失败/已取消的任务重新排队，返回真正排上的数量。
+    ///
+    /// 跳过的：正在跑的、已完成的、丢进回收站的（用户自己移走的就别偷偷拉回来）。
+    /// 同一 URL 已有活跃任务时 <see cref="Retry"/> 自己会拒绝，这里不重复判断。
+    /// </summary>
+    public int RetryAllFailed()
+    {
+        var candidates = Items
+            .Where(i => !i.IsActive
+                        && !i.IsCompleted
+                        && !i.IsDeleted
+                        && !i.IsFileMissing
+                        && (i.HasFailed || i.IsCancelled))
+            .ToList();
+
+        var started = 0;
+        foreach (var item in candidates)
+        {
+            if (Retry(item)) started++;
+        }
+        return started;
+    }
+
+    /// <summary>
     /// 删除任务（软删除 → 移入回收站，文件与去重记录保留）。
     /// 仅对已结束（完成/失败/取消）的任务有效，正在下载的必须先取消。
     /// </summary>

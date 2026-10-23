@@ -348,6 +348,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private int _activeCount;
 
+    /// <summary>失败 + 已取消的任务数（驱动「重试全部」按钮）。</summary>
+    [ObservableProperty]
+    private int _failedCount;
+
     /// <summary>Empty-state hint text, follows the selected category.</summary>
     [ObservableProperty]
     private string _queueEmptyText = "暂无下载任务";
@@ -432,6 +436,7 @@ public partial class MainViewModel : ObservableObject
         FilterDeletedText = string.Format(LanguageService.GetString("Queue_Filter_Deleted"), trash);
         TrashCount = trash;
         ActiveCount = active;
+        FailedCount = failed;
 
         QueueEmptyText = QueueFilter switch
         {
@@ -471,6 +476,20 @@ public partial class MainViewModel : ObservableObject
 
         // 切到「下载中」让用户立刻看到它又跑起来了 —— 点了按钮没反应
         // 正是这次要修的问题，重试后必须给出可见反馈。
+        QueueFilter = QueueFilter.Downloading;
+        RefreshQueueStats();
+    }
+
+    /// <summary>
+    /// 一键重试：把所有失败/已取消的任务重新排队。
+    /// 重试后切到「下载中」—— 否则停在「失败」视图上，一排东西瞬间消失，
+    /// 看着像被删了。
+    /// </summary>
+    [RelayCommand]
+    private void RetryAllFailed()
+    {
+        if (_queue.RetryAllFailed() == 0) return;
+
         QueueFilter = QueueFilter.Downloading;
         RefreshQueueStats();
     }

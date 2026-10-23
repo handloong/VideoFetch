@@ -681,6 +681,26 @@ internal static class UiSmokeTest
         ok &= Check("ui-smoke: 排队任务被标记为已取消",
             queued.State == DownloadState.Cancelled, queued.State.ToString());
 
+        // 「重试全部」：失败/已取消的一键重新排队。
+        // 这里只验证按钮存在、可见、绑到真命令 —— 真按下去会启动真实下载，
+        // 队列行为本身由 DownloadQueueTests 的 retry-all 覆盖。
+        ok &= Check("ui-smoke: 有失败任务时 FailedCount > 0", vm.FailedCount > 0, vm.FailedCount.ToString());
+        var retryAll = FindDescendant<Button>(tab, b => (b.Content as string) == Btn("Btn_RetryAll"));
+        ok &= Check("ui-smoke: 重试全部按钮存在", retryAll != null);
+        ok &= Check("ui-smoke: 重试全部按钮可见", retryAll != null && IsEffectivelyVisible(retryAll));
+        ok &= Check("ui-smoke: 重试全部按钮绑到对应命令",
+            retryAll != null && ReferenceEquals(retryAll.Command, vm.RetryAllFailedCommand));
+
+        // 没有失败任务时必须消失，不能留个点了没反应的按钮占位
+        foreach (var i in vm.DownloadItems)
+        {
+            i.HasFailed = false;
+            i.IsCancelled = false;
+        }
+        tab.UpdateLayout();
+        ok &= Check("ui-smoke: 没有失败任务时隐藏重试全部",
+            retryAll != null && !IsEffectivelyVisible(retryAll));
+
         vm.QueueFilter = QueueFilter.All;
         return ok;
     }

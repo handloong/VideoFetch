@@ -40,6 +40,7 @@ internal static class DownloadQueueTests
         await Safe("restore-failed", RestoreFailedTaskStaysOutOfTrashAsync);
         await Safe("restore-missing", RestoreCompletedWithMissingFileAsync);
         await Safe("retry", RetryFailedTaskAsync);
+        await Safe("retry-all", RetryAllFailedAsync);
         await Safe("cancel-running", CancelRunningTaskAsync);
         await Safe("cancel-then-retry", CancelThenRetryImmediatelyAsync);
         await Safe("purge", PurgeTaskAsync);
@@ -338,6 +339,69 @@ internal static class DownloadQueueTests
         Check("retry: 重试后写入下载记录", h.Records.GetByUrl(item.Url) != null);
 
         Check("retry: 已完成的任务不能再重试", !h.Queue.Retry(item));
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  8b. 一键重试
+    // ══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// 一键重试要满足三件事：把全部失败/已取消的重新排队、跳过已完成和回收站里的、
+    /// 再点一次不会重复排队。
+    /// </summary>
+    private static async Task RetryAllFailedAsync()
+    {
+        using var h = new Harness(maxConcurrent: 3);
+
+        // 前 3 次下载必失败，之后成功：快速造出多条失败任务
+        var budget = 3;
+        h.Runner.Handler = (_, path, _) =>
+        {
+            if (Interlocked.Decrement(ref budget) >= 0)
+                throw new InvalidOperationException("network down");
+
+            File.WriteAllText(path, "ok");
+            return Task.FromResult(path);
+        };
+
+        var failed = new List<DownloadItem>();
+        for (var i = 1; i <= 3; i++)
+            failed.Add(await h.EnqueueAndWaitAsync(Info($"https://site.test/v/ra{i}", $"批量失败{i}")));
+
+        Check("retry-all: 三条都失败", failed.All(i => i.HasFailed),
+            string.Join(",", failed.Select(i => i.HasFailed)));
+        Check("retry-all: 失败任务不进回收站", failed.All(i => !i.IsInTrash));
+
+        // 一条成功的（不应被重试）
+        var done = await h.EnqueueAndWaitAsync(Info("https://site.test/v/ra-ok", "成功的"));
+        Check("retry-all: 第四条成功", done.IsCompleted);
+
+        // 一条被用户丢进回收站的失败任务（也不应被拉回来）
+        var trashed = await h.EnqueueAndWaitAsync(
+            Info("https://site.test/v/ra-trash", "回收站里的"));
+        // 上面这条在 budget 用完后会成功，先删掉再手工造一条失败的最省事
+        trashed.IsCompleted = false;
+        trashed.HasFailed = true;
+        if (!h.Queue.DeleteToTrash(trashed)) Check("retry-all: 能移入回收站", false);
+
+        var downloadsBefore = h.Runner.Calls.Count;
+        var started = h.Queue.RetryAllFailed();
+
+        Check("retry-all: 只拉起失败的 3 条（跳过已完成和回收站）", started == 3, started.ToString());
+        Check("retry-all: 立即重新排队并开始下载",
+            failed.All(i => i.IsActive || i.IsCompleted));
+
+        await WaitUntilAsync(() => failed.All(i => !i.IsActive), 10000);
+
+        Check("retry-all: 重试后都完成", failed.All(i => i.IsCompleted),
+            string.Join(",", failed.Select(i => i.State)));
+        Check("retry-all: 每条都重新下载了一次", h.Runner.Calls.Count == downloadsBefore + 3,
+            $"{h.Runner.Calls.Count - downloadsBefore}");
+        Check("retry-all: 回收站里的没被重试", trashed.IsDeleted && !trashed.IsCompleted);
+        Check("retry-all: 已完成的不受影响", done.IsCompleted);
+
+        // 已经全部成功/回收 → 再点一次什么也不做
+        Check("retry-all: 没有可重试的任务时返回 0", h.Queue.RetryAllFailed() == 0);
     }
 
     // ══════════════════════════════════════════════════════════
