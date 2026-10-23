@@ -53,7 +53,20 @@ internal static class UiSmokeTest
     {
         Console.WriteLine("\n[ui-smoke]");
 
-        var app = new Application();
+        // 真实运行时的 UI 线程自带 DispatcherSynchronizationContext；测试线程没有，
+        // 于是 AsyncRelayCommand 的续体会落到线程池上，RaiseCanExecuteChanged 直接摸
+        // 另一个线程的 Button → "The calling thread cannot access this object"。
+        // 这里补上，和产品运行环境保持一致。
+        if (System.Threading.SynchronizationContext.Current == null)
+        {
+            System.Threading.SynchronizationContext.SetSynchronizationContext(
+                new System.Windows.Threading.DispatcherSynchronizationContext(
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher));
+        }
+
+        // OnExplicitShutdown：默认的 OnLastWindowClose 会在"最后一个窗口关闭"时
+        // 自动关掉 Application，之后 PushFrame / 新建窗口都会抛"应用程序对象正在关闭"。
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         app.Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("pack://application:,,,/VideoFetch;component/Themes/DarkTheme.xaml")
@@ -165,21 +178,29 @@ internal static class UiSmokeTest
         // 10) 设置页的 Cookie 导入
         ok &= CheckCookieSettings(vm);
 
-        // 10b) 主窗口默认尺寸：黄金比 + 比原来更大
+        // 10b) 主窗口确实按 WindowSizing 的结果设置尺寸。
+        //
+        // 注意别断言"比 1000x700 大"：CI 的 Windows runner 工作区很小，
+        // 窗口会被等比缩到 942x582，这条断言只在本机能过 —— 上一版就是这么崩的。
+        // 黄金比本身由 WindowSizingTests 用固定输入断言，这里只验证"ctor 真的用了它"。
         try
         {
             var win = new MainWindow();
-            var ratio = win.Width / win.Height;
-            ok &= Check("main-window: 默认尺寸按黄金比", Math.Abs(ratio - 1.618) < 0.01,
-                $"{win.Width}x{win.Height} ratio={ratio:0.000}");
-            ok &= Check("main-window: 比原来的 1000x700 更大", win.Width > 1000 && win.Height > 700,
-                $"{win.Width}x{win.Height}");
+            var work = SystemParameters.WorkArea;
+            var expected = WindowSizing.Fit(WindowSizing.DefaultWidth, work.Width, work.Height, win.MinWidth);
+
+            ok &= Check("main-window: 尺寸按工作区计算",
+                Math.Abs(win.Width - expected.Width) < 1 && Math.Abs(win.Height - expected.Height) < 1,
+                $"{win.Width}x{win.Height} 期望 {expected.Width}x{expected.Height}（工作区 {work.Width:0}x{work.Height:0}）");
+            ok &= Check("main-window: 最小尺寸按黄金比",
+                Math.Abs(win.MinWidth / win.MinHeight - 1.618) < 0.01,
+                $"{win.MinWidth}x{win.MinHeight}");
             win.Close();
         }
         catch (Exception ex)
         {
             Console.WriteLine("  info  MainWindow 构造失败（跳过尺寸断言）: " + ex.Message);
-            ok &= Check("main-window: 默认尺寸按黄金比", false, ex.Message);
+            ok &= Check("main-window: 尺寸按工作区计算", false, ex.Message);
         }
 
         // 11) UI 巡检：多尺寸下找裁切/零尺寸/越界/重叠/对比度问题
@@ -385,6 +406,14 @@ internal static class UiSmokeTest
             vm.CookieSite = SiteType.PinSe;
             vm.CookieText = "session=abc123";
             vm.SaveSettingsCommand.Execute(null);
+
+            // SaveSettingsAsync 里有个 await Task.Delay(2500) 用来清"保存成功"提示。
+            // 不抽 dispatcher 的话，这个续体会在线程池线程上执行 RaiseCanExecuteChanged →
+            // 摸到 UI 线程的 Button → "The calling thread cannot access this object"
+            // （本地跑得快、续体还没到进程就退了，CI 上跑 50 秒必炸）。
+            PumpDispatcher(TimeSpan.FromSeconds(3.5));
+            ok &= Check("settings: 保存提示会被异步清空（续体在 UI 线程上跑完）",
+                vm.SettingsSavedMessage.Length == 0, vm.SettingsSavedMessage);
 
             var saved = new SettingsService().Load();
             ok &= Check("settings: 保存时 Cookie 一起落盘",
@@ -702,6 +731,24 @@ internal static class UiSmokeTest
     /// <summary>从语言资源取文案（新方法里不能用别处的局部函数）。</summary>
     private static string Res(string key)
         => Application.Current.TryFindResource(key) as string ?? key;
+
+    /// <summary>
+    /// 跑一小段 dispatcher 队列（相当于"让界面活这么久"）。
+    /// UI 相关测试里凡是触发了异步续体的地方都要用，否则续体会落到线程池上。
+    /// </summary>
+    private static void PumpDispatcher(TimeSpan duration)
+    {
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        var timer = new System.Windows.Threading.DispatcherTimer(
+            System.Windows.Threading.DispatcherPriority.Background,
+            System.Windows.Threading.Dispatcher.CurrentDispatcher)
+        {
+            Interval = duration
+        };
+        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+        timer.Start();
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
+    }
 
     /// <summary>模拟点击某个表头（按表头文字找，找不到就跳过）。</summary>
     private static void ClickHeader(ListView list, string headerText)
