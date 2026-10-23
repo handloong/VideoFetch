@@ -21,14 +21,30 @@ if (probeOnly)
     return;
 }
 
+// --info <url>: 打印解析出的画质列表（顺序 + 最佳画质解析结果），调试下载画质用
+var infoIndex = Array.FindIndex(args, a => a.Equals("--info", StringComparison.OrdinalIgnoreCase));
+if (infoIndex >= 0 && infoIndex + 1 < args.Length)
+{
+    await DownloadProbe.ProbeUrlAsync(args[infoIndex + 1]);
+    return;
+}
+
+if (dlIndex >= 0)
+{
+    var kw = dlIndex + 1 < args.Length ? args[dlIndex + 1] : "teen";
+    await DownloadProbe.RunAsync(kw);
+    return;
+}
+
 var categoriesOk = CategoryTests.Run();
 var downloadOk = await DownloadQueueTests.RunAsync();
+var qualityOk = QualityTests.Run();
 var uiOk = UiSmokeTest.Run();
 
 if (!live && !catsOnly)
 {
     Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
-    Environment.ExitCode = categoriesOk && downloadOk && uiOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && qualityOk && uiOk ? 0 : 1;
     return;
 }
 
@@ -36,7 +52,7 @@ var liveCategoriesOk = await CategoryLiveTests.RunAsync();
 
 if (catsOnly)
 {
-    Environment.ExitCode = categoriesOk && downloadOk && uiOk && liveCategoriesOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && qualityOk && uiOk && liveCategoriesOk ? 0 : 1;
     return;
 }
 

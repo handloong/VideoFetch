@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Net.Http;
 using System.IO;
+using Newtonsoft.Json.Linq;
 using VideoFetch.Models;
 
 namespace VideoFetch.Services.Sites;
@@ -67,7 +68,20 @@ public class PinSeParser : ISiteParser
             // Title
             info.Title = ExtractPageTitle(html);
 
-            // Step 2 — Try main page for direct media URLs
+            // Step 2 — Playback API（现行布局）。播放器是 fetch POST
+            // /api/videos/{id}/playback 才拿到签名 m3u8，页面 HTML 里一个媒体
+            // 地址都没有 —— 只靠正则抓页面必然得到 0 个画质，界面就报
+            // "Could not get video info or no qualities available"。
+            var playback = await FetchPlaybackAsync(finalUrl, html, ct);
+            if (playback.HasValue)
+            {
+                PopulateStreams(info, playback.Value.Primary, "best");
+                if (!string.IsNullOrEmpty(playback.Value.Fallback))
+                    PopulateStreams(info, playback.Value.Fallback, "backup");
+                return info;
+            }
+
+            // Step 3 — 旧布局兜底：页面里直接有 m3u8/mp4
             var mainUrls = ExtractMediaUrls(html, finalUrl);
             mainUrls.AddRange(ExtractBase64MediaUrls(html, finalUrl));
             var best = PickBestMediaUrl(mainUrls);
@@ -232,24 +246,110 @@ public class PinSeParser : ISiteParser
 
     private static string ExtractPageTitle(string html)
     {
+        // 优先用 og:title / 结构化数据里的 name：<title> 会带上
+        // " - 作者 - 91PinSe" 的尾巴，而这个标题会被直接当作文件名。
+        foreach (var pattern in new[]
+        {
+            @"<meta[^>]+property=[""']og:title[""'][^>]+content=[""']([^""']+)",
+            @"""@type""\s*:\s*""VideoObject"".{0,400}?""name""\s*:\s*""([^""]+)""",
+        })
+        {
+            var hit = Regex.Match(html, pattern,
+                RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            if (!hit.Success) continue;
+
+            var candidate = ParserHelper.DecodeEntities(
+                Regex.Unescape(hit.Groups[1].Value)).Trim();
+            candidate = StripSiteSuffix(candidate);
+            if (!string.IsNullOrWhiteSpace(candidate))
+                return SanitizeFileName(candidate);
+        }
+
         var m = Regex.Match(html, @"<title[^>]*>(.*?)</title>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
         if (m.Success)
         {
             var t = ParserHelper.DecodeEntities(m.Groups[1].Value).Trim();
+            // <title> 形如 "标题 - 作者 - 91PinSe"：切掉站点尾巴
+            t = StripSiteSuffix(t);
             if (!string.IsNullOrWhiteSpace(t))
                 return SanitizeFileName(t);
         }
         return $"pinse_{DateTime.Now:HHmmss}";
     }
 
+    /// <summary>去掉标题末尾的 " - 91PinSe" 之类站点后缀（og:title 上也带着）。</summary>
+    private static string StripSiteSuffix(string title)
+        => Regex.Replace(title, @"\s*[-–|]\s*91\s*pin\s*se(?:\.com)?\s*$", "",
+            RegexOptions.IgnoreCase).Trim();
+
     // ═══════════════════════════════════════════════════════
     //  PRIVATE — Iframe URL extraction
     // ═══════════════════════════════════════════════════════
 
-    private static List<string> ExtractIframeUrls(string html, string baseUrl)
+    // ═══════════════════════════════════════════════════════
+    //  PRIVATE — Playback API
+    // ═══════════════════════════════════════════════════════
+
+    /// <summary>
+    /// POST /api/videos/{id}/playback → { "url": "...m3u8?sign=...", "fallback_url": "" }
+    ///
+    /// 两个必须的请求头：
+    ///   X-Requested-With: XMLHttpRequest —— 站点用它区分普通浏览
+    ///   Origin: https://91pinse.com      —— 缺少它一律 403（同源校验）
+    /// </summary>
+    private static async Task<(string Primary, string Fallback)?> FetchPlaybackAsync(
+        string pageUrl, string html, CancellationToken ct)
     {
-        var urls = new List<string>();
+        var id = ExtractVideoId(pageUrl) ?? ExtractVideoIdFromHtml(html);
+        if (id == null) return null;
+
+        try
+        {
+            using var req = new HttpRequestMessage(
+                HttpMethod.Post, $"{BaseUrl}/api/videos/{id}/playback");
+            req.Headers.TryAddWithoutValidation("User-Agent", UserAgent);
+            req.Headers.TryAddWithoutValidation("Accept", "application/json, text/javascript, */*; q=0.01");
+            req.Headers.TryAddWithoutValidation("Accept-Language", LangHdr);
+            req.Headers.TryAddWithoutValidation("X-Requested-With", "XMLHttpRequest");
+            req.Headers.TryAddWithoutValidation("Origin", BaseUrl);
+            req.Headers.Referrer = new Uri(pageUrl);
+
+            using var resp = await HttpClientFactory.GetClient().SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+
+            var json = await resp.Content.ReadAsStringAsync(ct);
+            var obj = JObject.Parse(json);
+            var primary = obj["url"]?.ToString() ?? "";
+            var fallback = obj["fallback_url"]?.ToString() ?? "";
+
+            return string.IsNullOrWhiteSpace(primary) ? null : (primary, fallback);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>从页面地址取视频 id：/v/470704 → 470704</summary>
+    public static string? ExtractVideoId(string url)
+    {
+        var m = Regex.Match(url, @"/v/(\d+)");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    /// <summary>地址里没有 id 时，从页面内的播放器脚本里找</summary>
+    private static string? ExtractVideoIdFromHtml(string html)
+    {
+        var m = Regex.Match(html, @"var\s+vid\s*=\s*""(\d+)""");
+        if (m.Success) return m.Groups[1].Value;
+
+        m = Regex.Match(html, @"/api/videos/(\d+)/playback");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    private static List<string> ExtractIframeUrls(string html, string baseUrl)
+    {        var urls = new List<string>();
 
         // Standard <iframe src="...">
         foreach (Match m in Regex.Matches(html,

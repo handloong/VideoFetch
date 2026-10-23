@@ -7,6 +7,24 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <conv:BoolToVisibilityConverter x:Key="InvertBoolToVis" Invert="True"/>
         <conv:NotNullOrEmptyConverter x:Key="NotNullOrEmpty"/>
+
+        <!-- 结果行右键菜单（同搜索页）：菜单挂在行上，操作的一定是点中的那一行 -->
+        <Style x:Key="ResultRowStyle" TargetType="ListViewItem"
+               BasedOn="{StaticResource FlatListViewItemStyle}">
+            <Setter Property="Tag"
+                    Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListView}}"/>
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu>
+                        <MenuItem Header="{DynamicResource Menu_OpenSourceUrl}"
+                                  Command="{Binding PlacementTarget.Tag.OpenSourceUrlCommand,
+                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding PlacementTarget.DataContext,
+                                            RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="12">
@@ -115,7 +133,7 @@
             <ListView x:Name="CategoryResultsList" Grid.Row="1"
                       ItemsSource="{Binding CategoryResults}"
                       SelectionMode="Extended" Background="Transparent" BorderThickness="0"
-                      ItemContainerStyle="{StaticResource FlatListViewItemStyle}"
+                      ItemContainerStyle="{StaticResource ResultRowStyle}"
                       ScrollViewer.CanContentScroll="False"
                       MouseDoubleClick="CategoryResultsList_MouseDoubleClick"
                       Visibility="{Binding HasCategoryResults, Converter={StaticResource BoolToVis}}">

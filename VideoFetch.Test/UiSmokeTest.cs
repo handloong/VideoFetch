@@ -122,7 +122,64 @@ internal static class UiSmokeTest
         // 5) 下载页：失败行必须给出「重试 / 删除任务」，不能再是点了没反应的「取消」
         ok &= CheckQueueTab(vm);
 
+        // 6) 搜索结果 / 分类结果的行右键菜单
+        ok &= CheckResultContextMenus(vm);
+
         return ok;
+    }
+
+    /// <summary>
+    /// 结果列表的右键菜单「打开源网址」。
+    ///
+    /// 菜单挂在行上而不是整个列表上，命令要从行拿到 ViewModel：绑定链是
+    /// 行.Tag = ListView.DataContext(=VM)，菜单项再通过 PlacementTarget 取。
+    /// 这条链断了菜单就会是灰的，所以这里断言 Tag 确实指向 VM。
+    /// </summary>
+    private static bool CheckResultContextMenus(MainViewModel vm)
+    {
+        for (var i = 1; i <= 3; i++)
+            vm.SearchResults.Add(new SearchResult
+            {
+                Title = $"搜索结果 {i}",
+                Url = $"https://www.xvideos.com/video.test{i}/x",
+                Site = SiteType.XVideos
+            });
+
+        var searchTab = new SearchTab { DataContext = vm };
+        searchTab.Measure(new Size(TabWidth, TabHeight));
+        searchTab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        searchTab.UpdateLayout();
+
+        var categoryTab = new CategoryTab { DataContext = vm };
+        categoryTab.Measure(new Size(TabWidth, TabHeight));
+        categoryTab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        categoryTab.UpdateLayout();
+
+        var ok = CheckResultMenu("搜索", searchTab, vm.SearchResults, vm);
+        ok &= CheckResultMenu("分类", categoryTab, vm.CategoryResults, vm);
+        return ok;
+    }
+
+    private static bool CheckResultMenu(string label, DependencyObject root,
+        System.Collections.IEnumerable items, MainViewModel vm)
+    {
+        var list = FindDescendant<ListView>(root, lv => ReferenceEquals(lv.ItemsSource, items));
+        if (!Check($"ui-smoke: {label}结果列表已绑定", list != null)) return false;
+
+        Check($"ui-smoke: {label}结果有内容", list!.Items.Count > 0);
+        var row = list.ItemContainerGenerator.ContainerFromIndex(0) as ListViewItem;
+        if (!Check($"ui-smoke: {label}结果行已生成", row != null)) return false;
+
+        var menu = row!.ContextMenu;
+        if (!Check($"ui-smoke: {label}结果行有右键菜单", menu != null)) return false;
+
+        Check($"ui-smoke: {label}右键菜单只有一个「打开源网址」", menu!.Items.Count == 1);
+        var item = menu.Items[0] as MenuItem;
+        Console.WriteLine($"  info  {label}菜单项: \"{item?.Header}\"");
+        Check($"ui-smoke: {label}菜单文案已本地化",
+            (item?.Header as string) == (Application.Current.TryFindResource("Menu_OpenSourceUrl") as string));
+        Check($"ui-smoke: {label}菜单能拿到 ViewModel（命令绑定链）", ReferenceEquals(row.Tag, vm));
+        return true;
     }
 
     /// <summary>

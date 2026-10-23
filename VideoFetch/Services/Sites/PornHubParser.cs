@@ -75,22 +75,31 @@ public class PornHubParser : ISiteParser
         foreach (JObject def in mediaDefs)
         {
             var format = def["format"]?.ToString() ?? "";
-            var quality = def["quality"]?.ToString() ?? "";
+            var quality = ReadScalar(def["quality"]);
             var videoUrl = def["videoUrl"]?.ToString() ?? "";
             if (string.IsNullOrEmpty(videoUrl)) continue;
 
+            // 站点偶尔给出 "quality": []（空数组），ToString() 会得到 "[]"，
+            // key 变成 mp4_[]、画质下拉框里出现 "[]p (MP4)" 这种脏项。
+            var q = string.IsNullOrEmpty(quality) ? "auto" : quality;
+            var label = string.IsNullOrEmpty(quality) ? "auto" : $"{quality}p";
+
             if (format == "hls")
             {
-                info.StreamUrls[$"hls_{quality}"] = videoUrl;
-                info.Qualities.Add(new QualityOption($"{quality}p (HLS)", $"hls_{quality}"));
+                info.StreamUrls[$"hls_{q}"] = videoUrl;
+                info.Qualities.Add(new QualityOption($"{label} (HLS)", $"hls_{q}"));
             }
             else if (format == "mp4" && videoUrl.Contains("/video/get_media"))
             {
-                info.StreamUrls[$"mp4_{quality}"] = videoUrl;
-                info.Qualities.Add(new QualityOption($"{quality}p (MP4)", $"mp4_{quality}"));
+                info.StreamUrls[$"mp4_{q}"] = videoUrl;
+                info.Qualities.Add(new QualityOption($"{label} (MP4)", $"mp4_{q}"));
             }
         }
     }
+
+    /// <summary>只认标量值（字符串/数字）；数组、对象、null 一律当空。</summary>
+    private static string ReadScalar(JToken? token)
+        => token is JValue { Value: not null } value ? value.ToString() : "";
 
     public async Task<List<SearchResult>> SearchAsync(string query, int page = 1, CancellationToken ct = default)
     {

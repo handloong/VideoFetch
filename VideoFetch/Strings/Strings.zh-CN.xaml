@@ -45,6 +45,9 @@
     <sys:String x:Key="Col_Duration">时长</sys:String>
     <sys:String x:Key="Col_Download">操作</sys:String>
 
+    <!-- 结果列表右键菜单 -->
+    <sys:String x:Key="Menu_OpenSourceUrl">🔗 打开源网址</sys:String>
+
     <!-- Category tab -->
     <sys:String x:Key="Tab_Category">🗂 分类</sys:String>
     <sys:String x:Key="Btn_LoadCategories">🔄 加载分类</sys:String>

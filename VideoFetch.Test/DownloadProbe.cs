@@ -22,9 +22,56 @@ namespace VideoFetch.Test;
 /// </summary>
 internal static class DownloadProbe
 {
-    public static async Task RunAsync(string keyword)
+    /// <summary>
+    /// 单个 URL 的诊断：打印解析出的全部画质选项（顺序很重要 —— 界面
+    /// 批量下载用的是 Qualities[0]），再按“最佳画质”解析出真实流地址。
+    ///
+    /// Run: dotnet run --project VideoFetch.Test -- --info &lt;url&gt;
+    /// </summary>
+    public static async Task ProbeUrlAsync(string url)
     {
         var settings = new SettingsService().Load();
+        HttpClientFactory.Configure(settings.ProxyEnabled ? settings.ProxyUrl : string.Empty);
+
+        var service = new VideoInfoService();
+        Console.WriteLine($"=== info probe ===\n{url}\n");
+
+        var info = await service.FetchAsync(url);
+        Console.WriteLine($"site      {info.Site}");
+        Console.WriteLine($"title     {info.Title}");
+        Console.WriteLine($"duration  {info.Duration}");
+        Console.WriteLine($"streams   {string.Join(", ", info.StreamUrls.Keys)}");
+
+        Console.WriteLine($"qualities ({info.Qualities.Count}) —— 界面默认取第 0 个:");
+        for (var i = 0; i < info.Qualities.Count; i++)
+        {
+            var q = info.Qualities[i];
+            var marker = i == 0 ? " <= 批量下载实际使用" : "";
+            Console.WriteLine($"  [{i}] {q.Label,-20} => {q.Value}{marker}");
+        }
+
+        var best = VideoInfoService.ResolveQualityKey(info, "best");
+        Console.WriteLine($"\nResolveQualityKey(\"best\") => {best}");
+
+        var resolved = await service.ResolveStreamUrlAsync(info, "best");
+        Console.WriteLine($"resolved  {Trim(resolved, 120)}");
+
+        // HLS: show every rendition in the master playlist so the real ceiling is visible
+        if (resolved.Contains(".m3u8", StringComparison.OrdinalIgnoreCase))
+        {
+            var (status, reason, _, _, body) = await GetHeadAsync(resolved, info.Url);
+            Console.WriteLine($"\nmaster    {status} {reason}");
+            foreach (var line in body.Split('\n'))
+            {
+                var t = line.Trim();
+                if (t.StartsWith("#EXT-X-STREAM-INF") || (!t.StartsWith('#') && t.Contains(".m3u8")))
+                    Console.WriteLine($"  {t}");
+            }
+        }
+    }
+
+    public static async Task RunAsync(string keyword)
+    {        var settings = new SettingsService().Load();
         HttpClientFactory.Configure(settings.ProxyEnabled ? settings.ProxyUrl : string.Empty);
         Console.WriteLine($"=== download probe (keyword: \"{keyword}\", proxy: " +
                           $"{(settings.ProxyEnabled ? settings.ProxyUrl : "none")}) ===\n");
@@ -42,8 +89,7 @@ internal static class DownloadProbe
     }
 
     private static async Task ProbeSiteAsync(ISiteParser parser, string keyword)
-    {
-        Console.WriteLine($"[{parser.Site}]");
+    {        Console.WriteLine($"[{parser.Site}]");
         try
         {
             var results = await parser.SearchAsync(keyword);
@@ -57,14 +103,17 @@ internal static class DownloadProbe
             Console.WriteLine($"  video   {Trim(pick.Title, 60)}");
             Console.WriteLine($"  page    {pick.Url}");
 
-            var info = await parser.FetchVideoInfoAsync(pick.Url);
+            // 必须走 VideoInfoService（而不是 parser）——生产路径在这里做画质
+            // 排序和 best/worst 补全，直接调 parser 看到的顺序不是界面看到的。
+            var info = await new VideoInfoService().FetchAsync(pick.Url);
             if (info == null)
             {
-                Console.WriteLine("  FAILED: FetchVideoInfoAsync returned null");
+                Console.WriteLine("  FAILED: FetchAsync returned null");
                 return;
             }
 
             Console.WriteLine($"  keys    {string.Join(", ", info.StreamUrls.Keys)}");
+            Console.WriteLine($"  quals   {string.Join(" | ", info.Qualities.Select(q => $"{q.Label}=>{q.Value}"))}");
 
             var qualityKey = info.StreamUrls.ContainsKey("best") ? "best" : info.Qualities.FirstOrDefault()?.Value ?? "best";
             var streamUrl = await new VideoInfoService().ResolveStreamUrlAsync(info, qualityKey);

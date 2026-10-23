@@ -45,6 +45,9 @@
     <sys:String x:Key="Col_Duration">Duration</sys:String>
     <sys:String x:Key="Col_Download">Action</sys:String>
 
+    <!-- Result list context menu -->
+    <sys:String x:Key="Menu_OpenSourceUrl">🔗 Open Source URL</sys:String>
+
     <!-- Category tab -->
     <sys:String x:Key="Tab_Category">🗂 Categories</sys:String>
     <sys:String x:Key="Btn_LoadCategories">🔄 Load Categories</sys:String>

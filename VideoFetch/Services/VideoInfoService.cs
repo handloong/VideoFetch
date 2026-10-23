@@ -65,6 +65,12 @@ public class VideoInfoService : IVideoInfoProvider
         if (string.IsNullOrEmpty(info.Title))
             info.Title = $"video_{DateTime.Now:yyyyMMdd_HHmmss}";
 
+        // 按清晰度从高到低排好：界面下拉框按这个顺序展示，批量下载取的
+        // Qualities[0] 也因此真的是最高画质（顺序原本取决于站点 HTML 的
+        // 书写顺序，经常是低清在前）。
+        info.Qualities.Sort((a, b) =>
+            ParseQualityHeuristic(b.Value).CompareTo(ParseQualityHeuristic(a.Value)));
+
         // Add "best/worst" pseudo-options if we have multiple qualities
         if (info.Qualities.Count > 1)
         {
@@ -228,12 +234,15 @@ public class VideoInfoService : IVideoInfoProvider
         var m = Regex.Match(key, @"(\d{3,4})");
         if (m.Success) return int.Parse(m.Groups[1].Value);
 
-        // Non-numeric keys: rank by known labels
+        // Non-numeric keys. These must stay BELOW real resolutions, otherwise
+        // a literal "high" (which on XVideos is only the 360p mp4) outranks
+        // "hls_720" and "best" silently downloads the low-resolution file.
         return key.ToLowerInvariant() switch
         {
-            var k when k.Contains("high") || k.Contains("direct") => 1000,
-            var k when k.Contains("hls") => 900,
-            var k when k.Contains("low") => 100,
+            var k when k.Contains("best") => int.MaxValue,
+            var k when k.Contains("hls") => 720,    // master playlist, usually up to 720p+
+            var k when k.Contains("high") || k.Contains("direct") => 480,
+            var k when k.Contains("low") => 240,
             _ => 0
         };
     }

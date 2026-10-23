@@ -81,9 +81,91 @@ public class XVideosParser : ISiteParser
 
             // Fallback: look for setVideoHLS/setVideoUrlHigh in HTML
             ExtractStreams(html, info);
+
+            // 把不透明的 "hls" 展开成真实清晰度档位（720p/480p/360p/250p）
+            await ExpandHlsRenditionsAsync(info, ct);
             return info;
         }
         catch { return null; }
+    }
+
+    /// <summary>
+    /// XVideos 页面只给出一个不透明的 "hls" 地址，真正的清晰度阶梯在主播放列表
+    /// 里（实测 720p / 480p / 360p / 250p）。不展开的话用户只能拿到
+    /// setVideoUrlHigh 指向的 360p mp4，看起来就是“下载下来分辨率太低”。
+    /// </summary>
+    private static async Task ExpandHlsRenditionsAsync(VideoInfo info, CancellationToken ct)
+    {
+        if (!info.StreamUrls.TryGetValue("hls", out var masterUrl) ||
+            string.IsNullOrWhiteSpace(masterUrl)) return;
+
+        try
+        {
+            using var resp = await HttpClientFactory.GetClient().GetAsync(masterUrl, ct);
+            if (!resp.IsSuccessStatusCode) return;
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            if (!text.Contains("#EXT-X-STREAM-INF")) return;   // 已经是媒体播放列表
+
+            var baseUri = new Uri(masterUrl);
+            var perHeight = ParseMasterRenditions(text, baseUri);
+            if (perHeight.Count == 0) return;
+
+            info.StreamUrls.Remove("hls");
+            info.Qualities.RemoveAll(q => q.Value == "hls");
+            foreach (var r in perHeight)
+            {
+                var key = $"hls_{r.Height}";
+                info.StreamUrls[key] = r.Url;
+                info.Qualities.Add(new QualityOption($"{r.Height}p (HLS)", key));
+            }
+        }
+        catch
+        {
+            // 主播放列表拿不到就保留原来的 "hls" 条目，行为退回改动前
+        }
+    }
+
+    /// <summary>
+    /// 解析 HLS 主播放列表的清晰度档位（按分辨率从高到低）。
+    /// 同一分辨率出现多条时只保留码率最高的那条。
+    /// 公开是为了让离线测试能直接喂一段 m3u8 文本。
+    /// </summary>
+    public static List<(int Height, long Bandwidth, string Url)> ParseMasterRenditions(
+        string m3u8, Uri baseUri)
+    {
+        var renditions = new List<(int Height, long Bandwidth, string Url)>();
+        var lines = m3u8.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+            if (!line.StartsWith("#EXT-X-STREAM-INF")) continue;
+            if (i + 1 >= lines.Length) continue;
+
+            var uriLine = lines[i + 1].Trim();
+            if (uriLine.Length == 0 || uriLine.StartsWith("#")) continue;
+
+            var height = 0;
+            var res = Regex.Match(line, @"RESOLUTION=\d+x(\d+)");
+            if (res.Success) height = int.Parse(res.Groups[1].Value);
+            else
+            {
+                var name = Regex.Match(line, @"NAME=""(\d+)p""");
+                if (name.Success) height = int.Parse(name.Groups[1].Value);
+            }
+            if (height <= 0) continue;
+
+            var bw = Regex.Match(line, @"BANDWIDTH=(\d+)");
+            var bandwidth = bw.Success ? long.Parse(bw.Groups[1].Value) : 0L;
+            var url = uriLine.StartsWith("http") ? uriLine : new Uri(baseUri, uriLine).ToString();
+            renditions.Add((height, bandwidth, url));
+        }
+
+        return renditions
+            .GroupBy(r => r.Height)
+            .Select(g => g.OrderByDescending(r => r.Bandwidth).First())
+            .OrderByDescending(r => r.Height)
+            .ToList();
     }
 
     private static void ExtractStreams(string html, VideoInfo info)
@@ -96,18 +178,10 @@ public class XVideosParser : ISiteParser
         }
 
         var highMatch = Regex.Match(html, @"setVideoUrlHigh\('([^']+)'");
-        if (highMatch.Success)
-        {
-            info.StreamUrls["high"] = highMatch.Groups[1].Value;
-            info.Qualities.Add(new QualityOption("High", "high"));
-        }
+        if (highMatch.Success) AddMp4(info, highMatch.Groups[1].Value);
 
         var lowMatch = Regex.Match(html, @"setVideoUrlLow\('([^']+)'");
-        if (lowMatch.Success)
-        {
-            info.StreamUrls["low"] = lowMatch.Groups[1].Value;
-            info.Qualities.Add(new QualityOption("Low", "low"));
-        }
+        if (lowMatch.Success) AddMp4(info, lowMatch.Groups[1].Value);
 
         // XVideos also uses __model as JSON
         var modelMatch = Regex.Match(html, @"__model\s*=\s*(\{.*?\});", RegexOptions.Singleline);
@@ -126,6 +200,22 @@ public class XVideosParser : ISiteParser
             }
             catch { }
         }
+    }
+
+    /// <summary>
+    /// setVideoUrlHigh / setVideoUrlLow 只是“高/低”两个标签，实际上分别是
+    /// 360p 和 240p。文件名里带着真实分辨率（video_360p.mp4），用它做 key
+    /// 和标签，画质列表才排得对、用户也看得懂。
+    /// </summary>
+    private static void AddMp4(VideoInfo info, string url)
+    {
+        var m = Regex.Match(url, @"_(\d{3,4})p\.(?:mp4|3gp)", RegexOptions.IgnoreCase);
+        var key = m.Success ? $"mp4_{m.Groups[1].Value}" : "mp4";
+        var label = m.Success ? $"{m.Groups[1].Value}p (MP4)" : "MP4";
+
+        if (info.StreamUrls.ContainsKey(key)) return;
+        info.StreamUrls[key] = url;
+        info.Qualities.Add(new QualityOption(label, key));
     }
 
     // ═══════════════════════════════════════════════════════

@@ -872,6 +872,29 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// 打开视频的源网页（结果列表右键菜单）。
+    /// </summary>
+    [RelayCommand]
+    private void OpenSourceUrl(SearchResult? result)
+    {
+        var url = result?.Url;
+        if (string.IsNullOrWhiteSpace(url)) return;
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            SetResultStatus(result, $"无法打开链接: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// When user double-clicks or clicks Select on a search result:
     /// 1. Fetch full video info from the URL
     /// 2. Auto-select best quality (first in list = highest)
