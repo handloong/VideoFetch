@@ -9,14 +9,41 @@
 # 推送后 GitHub Actions（.github/workflows/release.yml）会跑测试、打包两个
 # 单文件 exe 并创建 Release。
 #
-# 实现放在 PowerShell 而不是 .bat：cmd.exe 按字节读取 .bat，含中文时在
-# GBK 控制台下会错位（连 UTF-8 BOM 都不认），逻辑稍复杂就不可靠。
+# 为什么逻辑放在 ps1 而不是 .bat：cmd.exe 按字节读取 .bat，含中文时在 GBK
+# 控制台下会解析错位（UTF-8 无 BOM 会把半行当命令执行，加 BOM 又连 @echo off
+# 都认不出来，两种都实测过）。release.bat 只做一行转发。
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 
 $root = Split-Path -Parent $PSScriptRoot
 $csproj = 'VideoFetch/VideoFetch.csproj'
 $bumpScript = Join-Path $PSScriptRoot 'bump-version.ps1'
+
+# ── git 调用封装 ──────────────────────────────────────────────
+# git 习惯把进度/提示写到 stderr（"To <repo>" 之类），PS 5.1 会把它包成
+# ErrorRecord 冒到错误流上，行为随调用方式而变（有时候直接把脚本打断）。
+# 统一在这里捕获 2>&1 并用 Write-Host 输出，只返回退出码和文本。
+function Invoke-Git {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArgs)
+
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'SilentlyContinue'
+    try {
+        $lines = @(& git @GitArgs 2>&1)
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+
+    $text = @()
+    foreach ($line in $lines) {
+        if ($null -eq $line) { continue }
+        $s = $line.ToString()
+        if ($s.Length -gt 0) { $text += $s }
+    }
+
+    return [pscustomobject]@{ Code = $code; Lines = $text }
+}
 
 function Write-Usage {
     Write-Host @'
@@ -37,7 +64,7 @@ function Get-CsprojVersion {
     }
 }
 
-# ── 参数：支持 --dry-run / --help / 版本号（位置参数） ──
+# ── 参数：--dry-run / --help / 版本号（位置参数） ──
 $dryRun = $false
 $version = $null
 $wantsHelp = $false
@@ -62,7 +89,8 @@ Push-Location $root
 try {
     # ── 1. 决定版本号 ──
     if (-not $version) {
-        $last = git tag --list 'v*' --sort=-v:refname | Select-Object -First 1
+        $tagResult = Invoke-Git tag --list 'v*' --sort=-v:refname
+        $last = $tagResult.Lines | Select-Object -First 1
         if (-not $last) {
             Write-Host '[错误] 没有找到任何 v* 标签，请先指定版本，例如: release.bat 1.5'
             exit 1
@@ -83,20 +111,19 @@ try {
     $tag = 'v' + ($version -replace '^[vV]', '')
 
     # ── 2. 前置检查 ──
-    git rev-parse -q --verify "refs/tags/$tag" 2>&1 | Out-Null
-    if ($LASTEXITCODE -eq 0) {
+    if ((Invoke-Git rev-parse -q --verify "refs/tags/$tag").Code -eq 0) {
         Write-Host "[错误] 标签 $tag 已存在"
         exit 1
     }
 
-    $dirty = git status --porcelain
-    if ($LASTEXITCODE -ne 0) {
+    $status = Invoke-Git status --porcelain
+    if ($status.Code -ne 0) {
         Write-Host '[错误] 无法读取 git 状态'
         exit 1
     }
-    if ($dirty) {
+    if ($status.Lines.Count -gt 0) {
         Write-Host '[错误] 有未提交的改动，请先 commit：'
-        $dirty | ForEach-Object { Write-Host "  $_" }
+        $status.Lines | ForEach-Object { Write-Host "  $_" }
         exit 1
     }
 
@@ -120,12 +147,14 @@ try {
         exit 1
     }
 
-    git diff --quiet -- $csproj
-    if ($LASTEXITCODE -ne 0) {
-        git add $csproj 2>&1 | Out-Null
-        git commit -q -m "chore(release): 版本号 -> $tag" 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host '[错误] 版本号提交失败'
+    $diff = Invoke-Git diff --quiet -- $csproj
+    if ($diff.Code -ne 0) {
+        if ((Invoke-Git add $csproj).Code -ne 0) {
+            Write-Host '[错误] 暂存版本号变更失败'
+            exit 1
+        }
+        if ((Invoke-Git commit -q -m "chore(release): 版本号 -> $tag").Code -ne 0) {
+            Write-Host '[错误] 提交版本号变更失败'
             exit 1
         }
         Write-Host '已提交版本号变更'
@@ -134,21 +163,24 @@ try {
     # ── 5. 打标签并推送 ──
     Write-Host ''
     Write-Host "创建标签 $tag ..."
-    git tag -a $tag -m "release $tag"
-    if ($LASTEXITCODE -ne 0) {
+    $tagCreate = Invoke-Git tag -a $tag -m "release $tag"
+    foreach ($l in $tagCreate.Lines) { Write-Host $l }
+    if ($tagCreate.Code -ne 0) {
         Write-Host '[错误] 创建标签失败'
         exit 1
     }
 
     Write-Host '推送提交和标签到 origin ...'
-    git push origin HEAD 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $pushBranch = Invoke-Git push origin HEAD
+    foreach ($l in $pushBranch.Lines) { Write-Host $l }
+    if ($pushBranch.Code -ne 0) {
         Write-Host '[错误] 推送提交失败，检查网络/代理: git config http.proxy'
         exit 1
     }
 
-    git push origin $tag 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $pushTag = Invoke-Git push origin $tag
+    foreach ($l in $pushTag.Lines) { Write-Host $l }
+    if ($pushTag.Code -ne 0) {
         Write-Host '[错误] 推送标签失败，检查网络/代理: git config http.proxy'
         exit 1
     }
