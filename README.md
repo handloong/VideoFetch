@@ -120,6 +120,10 @@ VideoFetch/
 ├── Strings/                        # 多语言资源
 ├── Themes/DarkTheme.xaml           # 暗色主题
 └── Resources/                      # 图标
+
+tools/
+├── release.ps1                     # 一键发版：同步版本号 -> 提交 -> 打标签 -> 推送
+└── bump-version.ps1                # 只改 csproj 的 <Version>（可单独调用）
 ```
 
 ## 技术栈
