@@ -72,6 +72,7 @@
             <TextBlock Grid.Column="1" Text="{Binding QueueSortLabel}"
                        HorizontalAlignment="Right" VerticalAlignment="Center"
                        Margin="0,0,10,0" FontSize="11"
+                       ToolTip="{DynamicResource Tip_ClickHeaderToSort}"
                        Foreground="{StaticResource TextSecondaryBrush}"/>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

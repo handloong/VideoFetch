@@ -10,6 +10,21 @@ public partial class CategoryTab : UserControl
 {
     public CategoryTab() => InitializeComponent();
 
+    /// <summary>
+    /// 行选中即"勾选下载"：Ctrl 点选 / Shift 连选之后不用再去点每一行的复选框。
+    ///
+    /// 只做单向同步（选中 → IsSelected）：复选框自己切换时不该反过来改变行的选中状态，
+    /// 否则点一个复选框会把整批选中状态搞乱。
+    /// </summary>
+    private void Results_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        foreach (var item in e.AddedItems.OfType<SearchResult>())
+            item.IsSelected = true;
+
+        foreach (var item in e.RemovedItems.OfType<SearchResult>())
+            item.IsSelected = false;
+    }
+
     private void CategoryResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListView lv || lv.SelectedItem is not SearchResult result) return;

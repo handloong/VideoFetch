@@ -165,7 +165,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>当前是否降序。</summary>
     public bool QueueSortDescending => _queueSortDescending;
 
-    /// <summary>工具栏上的"排序：下载时间 ↓"提示（表头也能点，但箭头不好塞进本地化文案里）。</summary>
+    /// <summary>工具栏上的"下载时间 ↓"提示（表头也能点，但箭头不好塞进本地化文案里）。</summary>
     public string QueueSortLabel
         => string.Format(LanguageService.GetString("Queue_SortFormat"),
             LanguageService.GetString(HeaderResourceKey(_queueSortKey)),

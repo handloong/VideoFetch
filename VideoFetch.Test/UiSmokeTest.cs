@@ -144,6 +144,9 @@ internal static class UiSmokeTest
         // 8) 结果列表排序（时长 长→短）
         ok &= CheckResultSort(vm);
 
+        // 8b) 结果列表：Ctrl 点选 / Shift 连选 等同勾选
+        ok &= CheckResultRowSelection(vm);
+
         // 9) 批量下载的进度与取消（批量期间界面上必须有反馈）
         ok &= CheckBatchUi(vm);
 
@@ -152,6 +155,10 @@ internal static class UiSmokeTest
 
         // 10) 设置页的 Cookie 导入
         ok &= CheckCookieSettings(vm);
+
+        // 11) UI 巡检：多尺寸下找裁切/零尺寸/越界/重叠/对比度问题
+        // 有发现即算失败 —— 逼着每次新增界面元素都把布局/对比度当回事
+        ok &= Check("ui-smoke: UI 巡检（多尺寸布局与对比度）无问题", UiAudit.Run(vm) == 0);
 
         // 收尾：队列的待续清单目录还原，临时目录删掉
         PendingQueueStore.Directory = originalPendingDir;
@@ -250,6 +257,58 @@ internal static class UiSmokeTest
         vm.ResultSort = ResultSort.Default;
         vm.SearchResults.Clear();
 
+        return ok;
+    }
+
+    /// <summary>
+    /// 结果列表的行选中要等于"勾选下载"：Ctrl 点选 / Shift 连选之后，
+    /// 用户不用再逐行去点复选框。
+    /// </summary>
+    private static bool CheckResultRowSelection(MainViewModel vm)
+    {
+        var ok = true;
+
+        var items = Enumerable.Range(1, 3).Select(i => new SearchResult
+        {
+            Title = $"选中项 {i}",
+            Url = $"https://example.test/sel{i}",
+            Site = SiteType.XVideos
+        }).ToList();
+
+        foreach (var item in items) vm.SearchResults.Add(item);
+
+        var tab = new SearchTab { DataContext = vm };
+        tab.Measure(new Size(TabWidth, TabHeight));
+        tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        tab.UpdateLayout();
+
+        var list = FindDescendant<ListView>(tab, l => ReferenceEquals(l.ItemsSource, vm.SearchResults));
+        if (list == null) return false;
+
+        ok &= Check("ui-smoke: 搜索结果支持多选", list.SelectionMode == SelectionMode.Extended,
+            list.SelectionMode.ToString());
+
+        // 模拟 Ctrl 点选两条（SelectedItems 变化会触发 SelectionChanged）
+        list.SelectedItems.Add(items[0]);
+        list.SelectedItems.Add(items[2]);
+
+        ok &= Check("ui-smoke: 选中行即勾选",
+            items[0].IsSelected && items[2].IsSelected && !items[1].IsSelected,
+            string.Join(",", items.Select(i => i.IsSelected)));
+        ok &= Check("ui-smoke: 批量下载数量跟着变", vm.SelectedResultCount == 2,
+            vm.SelectedResultCount.ToString());
+
+        list.SelectedItems.Remove(items[2]);
+        ok &= Check("ui-smoke: 取消选中即取消勾选", !items[2].IsSelected,
+            items[2].IsSelected.ToString());
+
+        // 逐行勾选也应该照常工作（反向不受行选中影响）
+        items[1].IsSelected = true;
+        ok &= Check("ui-smoke: 复选框仍可单独勾选", vm.SelectedResultCount == 2 && items[1].IsSelected,
+            vm.SelectedResultCount.ToString());
+
+        items.ForEach(i => i.IsSelected = false);
+        vm.SearchResults.Clear();
         return ok;
     }
 

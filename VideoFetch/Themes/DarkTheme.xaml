@@ -6,7 +6,9 @@
     <Color x:Key="BgPrimaryColor">#1E1E2E</Color>
     <Color x:Key="BgSecondaryColor">#252537</Color>
     <Color x:Key="BgTertiaryColor">#2D2D44</Color>
-    <Color x:Key="AccentColor">#7C6FF7</Color>
+    <!-- 强调色：不要用更浅的紫。#7C6FF7 上压白字只有 3.0:1，
+         小字（按钮、筛选标签）按 WCAG 需要 4.5:1；这个值约 6:1。 -->
+    <Color x:Key="AccentColor">#5B4CD8</Color>
     <Color x:Key="AccentHoverColor">#9B96F8</Color>
     <Color x:Key="TextPrimaryColor">#E2E2F0</Color>
     <Color x:Key="TextSecondaryColor">#9999AA</Color>

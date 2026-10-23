@@ -5,6 +5,9 @@ using VideoFetch.Services;
 using VideoFetch.Services.Sites;
 using VideoFetch.Test;
 
+// 控制台输出统一 UTF-8：断言名都是中文，GBK 控制台里会变成乱码，抓 FAIL 都抓不准
+try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
+
 // Test entry point.
 //   (no args)  offline only: category parsing (fixtures) + download queue state machine
 //              + CategoryTab / QueueTab layout smoke tests

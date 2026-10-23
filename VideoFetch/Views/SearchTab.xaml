@@ -145,6 +145,7 @@
             <!-- Results ListView -->
             <ListView Grid.Row="1" ItemsSource="{Binding SearchResults}"
                       SelectionMode="Extended" Background="Transparent" BorderThickness="0"
+                      SelectionChanged="Results_SelectionChanged"
                       ItemContainerStyle="{StaticResource ResultRowStyle}"
                       ScrollViewer.CanContentScroll="False"
                       Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}"

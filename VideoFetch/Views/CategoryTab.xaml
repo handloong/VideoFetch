@@ -169,6 +169,7 @@
             <ListView x:Name="CategoryResultsList" Grid.Row="1"
                       ItemsSource="{Binding CategoryResults}"
                       SelectionMode="Extended" Background="Transparent" BorderThickness="0"
+                      SelectionChanged="Results_SelectionChanged"
                       ItemContainerStyle="{StaticResource ResultRowStyle}"
                       ScrollViewer.CanContentScroll="False"
                       MouseDoubleClick="CategoryResultsList_MouseDoubleClick"
