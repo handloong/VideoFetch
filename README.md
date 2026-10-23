@@ -5,6 +5,8 @@ C# WPF 视频下载工具，支持 PornHub / XVideos / XNXX 视频搜索与下�
 ## 功能
 
 - 🔍 **关键词搜索** — 在 PornHub / XVideos / XNXX 搜索视频
+- ⏳ **时长排序** — 结果列表读得出时长（`10:52` / `11 min` / `13分钟` / `0:02:14` 都能认），
+  可一键把长视频排到最前
 - 🗂 **分类浏览** — 实时解析站点真实分类/标签（XVideos 38 个、XNXX 155 个、PornHub 105 个、91pinse 热门标签），点标签即浏览
 - ⏱ **时长筛选** — 91pinse 支持按 `< 5 / 5-20 / 20+` 分钟过滤，搜索和分类页都能用（下拉框只在该站点出现）
 - 📥 **URL 解析下载** — 粘贴链接自动获取视频信息，支持多画质选择
@@ -91,6 +93,9 @@ dotnet run --project VideoFetch.Test -- --live
 
 # 诊断单个链接：打印解析出的画质列表（顺序 + “最佳画质”实际解析到哪条流）
 dotnet run --project VideoFetch.Test -- --info "https://www.xvideos.com/video.xxx/title"
+
+# 诊断时长解析：打印四站点真实搜索结果的时长（原始文案 + 秒数 + 长→短排序）
+dotnet run --project VideoFetch.Test -- --dur amateur
 ```
 
 下载队列的测试覆盖：入队/去重/并发上限、失败（含残留文件清理）、取消、重试、删除到回收站、

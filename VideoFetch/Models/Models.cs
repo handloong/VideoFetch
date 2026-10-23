@@ -65,6 +65,28 @@ public record DurationOption(string Label, DurationFilter Value)
 }
 
 /// <summary>
+/// 结果列表的排序方式。列表本身来自站点的相关度/更新顺序，"默认"就保持原样。
+/// </summary>
+public enum ResultSort
+{
+    /// <summary>站点返回的原始顺序</summary>
+    Default,
+    /// <summary>时长从长到短（未知时长排最后）</summary>
+    DurationDesc,
+    /// <summary>时长从短到长（未知时长排最后）</summary>
+    DurationAsc
+}
+
+/// <summary>
+/// 排序下拉框的显示项。和 <see cref="DurationOption"/> 一样要重写 ToString，
+/// 否则 ComboBox 收起时会显示 "SortOption { Label = … Value = … }"。
+/// </summary>
+public record SortOption(string Label, ResultSort Value)
+{
+    public override string ToString() => Label;
+}
+
+/// <summary>
 /// Represents a video quality option
 /// </summary>
 public record QualityOption(string Label, string Value);
@@ -323,6 +345,9 @@ public class AppSettings
     public bool CreateSubfolders { get; set; } = false;
     public bool UseBuiltInPlayer { get; set; } = false;
 
+    /// <summary>结果列表的排序偏好（记住上次选择）。</summary>
+    public ResultSort ResultSort { get; set; } = ResultSort.Default;
+
     /// <summary>
     /// 用户导入的 Cookie：站点名（SiteType 的 ToString）→ "a=1; b=2"。
     /// 用于登录态才能拿到的高清/会员内容。
@@ -339,6 +364,8 @@ public class SearchResult : System.ComponentModel.INotifyPropertyChanged
     private string _url = string.Empty;
     private string _author = string.Empty;
     private string _duration = string.Empty;
+    private int _durationSeconds;
+    private int _index;
     private string _thumbnailUrl = string.Empty;
     private SiteType _site;
     private bool _isSelected;
@@ -346,7 +373,33 @@ public class SearchResult : System.ComponentModel.INotifyPropertyChanged
     public string Title { get => _title; set { _title = value; OnPropertyChanged(nameof(Title)); } }
     public string Url { get => _url; set { _url = value; OnPropertyChanged(nameof(Url)); } }
     public string Author { get => _author; set { _author = value; OnPropertyChanged(nameof(Author)); } }
-    public string Duration { get => _duration; set { _duration = value; OnPropertyChanged(nameof(Duration)); } }
+    public string Duration
+    {
+        get => _duration;
+        set
+        {
+            _duration = value;
+            // 排序只认秒数：站点文案格式各不相同（10:52 / 11 min / 0:02:14），
+            // 在赋值处统一算一次，四个解析器就不用各自记住这件事。
+            DurationSeconds = Services.DurationText.ToSeconds(value);
+            OnPropertyChanged(nameof(Duration));
+        }
+    }
+
+    /// <summary>
+    /// 时长的秒数，解析不出就是 0。<see cref="Duration"/> 一变就重算，
+    /// 所以任何解析器只要填了文案就自动具备排序能力。
+    /// </summary>
+    public int DurationSeconds
+    {
+        get => _durationSeconds;
+        private set
+        {
+            if (_durationSeconds == value) return;
+            _durationSeconds = value;
+            OnPropertyChanged(nameof(DurationSeconds));
+        }
+    }
     public string ThumbnailUrl { get => _thumbnailUrl; set { _thumbnailUrl = value; OnPropertyChanged(nameof(ThumbnailUrl)); } }
     public SiteType Site { get => _site; set { _site = value; OnPropertyChanged(nameof(Site)); } }
 
@@ -358,7 +411,18 @@ public class SearchResult : System.ComponentModel.INotifyPropertyChanged
     /// <summary>
     /// 1-based index for display in the ListView (set by ViewModel)
     /// </summary>
-    public int Index { get; set; }
+    // 必须发通知：按序号重排（如按时长排序）后这个值会变，
+    // 不通知界面就会留着旧序号（"最长"那行还挂着 1，看起来像没排）。
+    public int Index
+    {
+        get => _index;
+        set
+        {
+            if (_index == value) return;
+            _index = value;
+            OnPropertyChanged(nameof(Index));
+        }
+    }
 
     /// <summary>
     /// Whether this video has been downloaded before (set by ViewModel from DB).

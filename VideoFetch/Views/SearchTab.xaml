@@ -90,39 +90,56 @@
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1"
                     Padding="8,5"
                     Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}">
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="{DynamicResource Btn_SelectAll}"
-                            Command="{Binding SelectAllResultsCommand}"
-                            Style="{StaticResource SecondaryButtonStyle}"
-                            FontSize="10" Padding="8,2" Margin="0,0,5,0"/>
-                    <Button Content="{DynamicResource Btn_InvertSelection}"
-                            Command="{Binding InvertSelectionCommand}"
-                            Style="{StaticResource SecondaryButtonStyle}"
-                            FontSize="10" Padding="8,2" Margin="0,0,8,0"/>
-                    <Separator Style="{StaticResource VerticalSepStyle}"/>
-                    <CheckBox Content="{DynamicResource Btn_IncludeDownloaded}"
-                              IsChecked="{Binding IncludeAlreadyDownloaded}"
-                              FontSize="10" Margin="0,0,8,0" VerticalAlignment="Center"
-                              ToolTip="{DynamicResource Tip_IncludeDownloaded}"/>
-                    <Separator Style="{StaticResource VerticalSepStyle}"/>
-                    <Button Command="{Binding BatchDownloadCommand}"
-                            Style="{StaticResource PrimaryButtonStyle}"
-                            FontSize="10" Padding="10,2" Margin="8,0,6,0"
-                            Content="{Binding BatchDownloadText}"/>
-                    <Button Command="{Binding CancelBatchDownloadCommand}"
-                            Content="{DynamicResource Btn_CancelBatch}"
-                            Style="{StaticResource DangerButtonStyle}"
-                            FontSize="10" Padding="8,2" Margin="0,0,6,0"
-                            Visibility="{Binding IsBatchDownloading, Converter={StaticResource BoolToVis}}"/>
-                    <TextBlock Text="{Binding BatchProgressText}" FontSize="10"
-                               Foreground="{StaticResource AccentBrush}"
-                               VerticalAlignment="Center" Margin="6,0,0,0"
-                               Visibility="{Binding BatchProgressText, Converter={StaticResource NotNullOrEmpty}}"/>
-                    <TextBlock Text="{DynamicResource Hint_DoubleClick}" FontSize="10"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               VerticalAlignment="Center" Margin="6,0,0,0"
-                               Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}"/>
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Button Content="{DynamicResource Btn_SelectAll}"
+                                Command="{Binding SelectAllResultsCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                FontSize="10" Padding="8,2" Margin="0,0,5,0"/>
+                        <Button Content="{DynamicResource Btn_InvertSelection}"
+                                Command="{Binding InvertSelectionCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                FontSize="10" Padding="8,2" Margin="0,0,8,0"/>
+                        <Separator Style="{StaticResource VerticalSepStyle}"/>
+                        <CheckBox Content="{DynamicResource Btn_IncludeDownloaded}"
+                                  IsChecked="{Binding IncludeAlreadyDownloaded}"
+                                  FontSize="10" Margin="0,0,8,0" VerticalAlignment="Center"
+                                  ToolTip="{DynamicResource Tip_IncludeDownloaded}"/>
+                        <Separator Style="{StaticResource VerticalSepStyle}"/>
+                        <Button Command="{Binding BatchDownloadCommand}"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                FontSize="10" Padding="10,2" Margin="8,0,6,0"
+                                Content="{Binding BatchDownloadText}"/>
+                        <Button Command="{Binding CancelBatchDownloadCommand}"
+                                Content="{DynamicResource Btn_CancelBatch}"
+                                Style="{StaticResource DangerButtonStyle}"
+                                FontSize="10" Padding="8,2" Margin="0,0,6,0"
+                                Visibility="{Binding IsBatchDownloading, Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Text="{Binding BatchProgressText}" FontSize="10"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Visibility="{Binding BatchProgressText, Converter={StaticResource NotNullOrEmpty}}"/>
+                        <TextBlock Text="{DynamicResource Hint_DoubleClick}" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{DynamicResource Sort_Label}" FontSize="10"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <ComboBox ItemsSource="{Binding SortOptions}"
+                                      DisplayMemberPath="Label"
+                                      SelectedValuePath="Value"
+                                      SelectedValue="{Binding ResultSort}"
+                                      ToolTip="{DynamicResource Sort_Tooltip}"
+                                      FontSize="11" MinWidth="110" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
             </Border>
 
             <!-- Results ListView -->
@@ -172,6 +189,16 @@
                                             Opacity="0.7" Padding="3,0" HorizontalAlignment="Left" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Site}" FontSize="9" FontWeight="Medium" Foreground="White"/>
                                     </Border>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                        <!-- 时长：既能看出排序依据，也方便判断要不要下 -->
+                        <GridViewColumn Header="{DynamicResource Col_Duration}" Width="70">
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate DataType="{x:Type models:SearchResult}">
+                                    <TextBlock Text="{Binding Duration}" FontSize="11"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>

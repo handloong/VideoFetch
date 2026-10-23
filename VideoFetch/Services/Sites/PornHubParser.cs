@@ -144,8 +144,11 @@ public class PornHubParser : ISiteParser
                             ?? linkNode;
             var title = ParserHelper.DecodeEntities(DecodeJsonString(titleNode.InnerText?.Trim() ?? ""));
 
-            var durNode = item.SelectSingleNode(".//span[contains(@class,'duration')]")
-                            ?? item.SelectSingleNode(".//div[contains(@class,'duration')]");
+            // PornHub 列表里时长是 <var class="duration">10:52</var>，
+            // 只找 span/div 会一直是空的（列表页从不显示时长、也没法排序）。
+            var durNode = item.SelectSingleNode(".//var[contains(@class,'duration')]")
+                        ?? item.SelectSingleNode(".//span[contains(@class,'duration')]")
+                        ?? item.SelectSingleNode(".//div[contains(@class,'duration')]");
             var duration = durNode?.InnerText?.Trim() ?? "";
 
             var authorNode = item.SelectSingleNode(".//span[contains(@class,'username')]//a")

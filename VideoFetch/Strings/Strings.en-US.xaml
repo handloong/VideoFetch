@@ -54,6 +54,12 @@
     <sys:String x:Key="Dur_Short">&lt; 5 min</sys:String>
     <sys:String x:Key="Dur_Medium">5-20 min</sys:String>
     <sys:String x:Key="Dur_Long">20+ min</sys:String>
+    <!-- Result list sorting -->
+    <sys:String x:Key="Sort_Label">Sort</sys:String>
+    <sys:String x:Key="Sort_Default">Site order</sys:String>
+    <sys:String x:Key="Sort_DurationDesc">Longest first</sys:String>
+    <sys:String x:Key="Sort_DurationAsc">Shortest first</sys:String>
+    <sys:String x:Key="Sort_Tooltip">Reorder the current list by duration (no new request; unknown durations go last)</sys:String>
 
     <!-- Category tab -->
     <sys:String x:Key="Tab_Category">🗂 Categories</sys:String>

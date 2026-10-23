@@ -29,17 +29,28 @@ if (infoIndex >= 0 && infoIndex + 1 < args.Length)
     return;
 }
 
+// --dur [keyword]: 打印四站点搜索结果的时长（原始文案 + 秒数 + 长→短排序结果）
+var durIndex = Array.FindIndex(args, a => a.Equals("--dur", StringComparison.OrdinalIgnoreCase));
+if (durIndex >= 0)
+{
+    var kw = durIndex + 1 < args.Length && !args[durIndex + 1].StartsWith("--")
+        ? args[durIndex + 1]
+        : "amateur";
+    await DurationProbe.RunAsync(kw);
+    return;
+}
+
 if (dlIndex >= 0)
 {
     var kw = dlIndex + 1 < args.Length ? args[dlIndex + 1] : "teen";
     await DownloadProbe.RunAsync(kw);
-    return;
-}
+    return;}
 
 var categoriesOk = CategoryTests.Run();
 var downloadOk = await DownloadQueueTests.RunAsync();
 var engineOk = DownloadEngineTests.Run();
 var searchOk = SearchParsingTests.Run();
+var durationOk = DurationSortTests.Run();
 var qualityOk = QualityTests.Run();
 var logOk = AppLogTests.Run();
 var cookieOk = SiteCookiesTests.Run();
@@ -50,7 +61,7 @@ var uiOk = UiSmokeTest.Run();
 if (!live && !catsOnly)
 {
     Console.WriteLine("\n(skipping live site tests — pass --live to enable)");
-    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && durationOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk ? 0 : 1;
     return;
 }
 
@@ -58,7 +69,7 @@ var liveCategoriesOk = await CategoryLiveTests.RunAsync();
 
 if (catsOnly)
 {
-    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk && liveCategoriesOk ? 0 : 1;
+    Environment.ExitCode = categoriesOk && downloadOk && engineOk && searchOk && durationOk && qualityOk && logOk && cookieOk && routingOk && settingsOk && uiOk && liveCategoriesOk ? 0 : 1;
     return;
 }
 

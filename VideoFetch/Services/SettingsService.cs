@@ -38,7 +38,8 @@ public class SettingsService
         catch (Exception ex)
         {
             // 以前这里静默吞掉：配置损坏 → 用户所有设置悄悄回到默认值且毫无提示
-            AppLog.Warn($"读取配置失败，已使用默认设置: {ex.Message}");
+            // 带上路径：测试会用临时目录故意写坏一份，日志里能一眼看出不是用户的配置
+            AppLog.Warn($"读取配置失败，已使用默认设置 ({ConfigPath}): {ex.Message}");
             return new AppSettings();
         }
     }

@@ -56,7 +56,8 @@ internal static class SettingsServiceTests
             MaxConcurrentDownloads = 3,
             ProxyEnabled = true,
             ProxyUrl = "http://127.0.0.1:7890",
-            CreateSubfolders = true
+            CreateSubfolders = true,
+            ResultSort = ResultSort.DurationDesc
         };
         settings.SiteCookies["PinSe"] = "session=abc";
 
@@ -69,6 +70,8 @@ internal static class SettingsServiceTests
         Check("settings: 代理还原", loaded.ProxyEnabled && loaded.ProxyUrl == "http://127.0.0.1:7890");
         Check("settings: Cookie 还原",
             loaded.SiteCookies.TryGetValue("PinSe", out var ck) && ck == "session=abc");
+        Check("settings: 排序偏好还原（枚举要能存进 JSON 再读回来）",
+            loaded.ResultSort == ResultSort.DurationDesc, loaded.ResultSort.ToString());
     }
 
     private static void CorruptFile()

@@ -128,7 +128,10 @@ internal static class UiSmokeTest
         // 7) 时长筛选下拉框（仅 91pinse）
         ok &= CheckDurationFilter(vm);
 
-        // 8) 批量下载的进度与取消（批量期间界面上必须有反馈）
+        // 8) 结果列表排序（时长 长→短）
+        ok &= CheckResultSort(vm);
+
+        // 9) 批量下载的进度与取消（批量期间界面上必须有反馈）
         ok &= CheckBatchUi(vm);
 
         // 9) 弹层主题（右键菜单 / ToolTip 都是独立视觉树，不继承主题）
@@ -136,6 +139,96 @@ internal static class UiSmokeTest
 
         // 10) 设置页的 Cookie 导入
         ok &= CheckCookieSettings(vm);
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 结果列表排序：搜索页/分类页都要有下拉框，切换后列表真的重排，
+    /// 而且序号跟着新的可视顺序重编（序号是装饰，不能还挂在旧位置）。
+    ///
+    /// 注意：这里会触发一次设置保存（排序是会被记住的偏好），所以必须
+    /// 在 Cookie 测试之前跑，并把它复位成默认值。
+    /// </summary>
+    private static bool CheckResultSort(MainViewModel vm)
+    {
+        var ok = true;
+
+        ok &= Check("ui-smoke: 排序选项 3 项", vm.SortOptions.Count == 3, vm.SortOptions.Count.ToString());
+        ok &= Check("ui-smoke: 排序文案来自语言资源",
+            vm.SortOptions[0].Label == (Application.Current.TryFindResource("Sort_Default") as string),
+            vm.SortOptions[0].Label);
+        ok &= Check("ui-smoke: 排序选项的 ToString 是文案（否则下拉框会显示整条记录）",
+            !vm.SortOptions[1].ToString().Contains("SortOption"), vm.SortOptions[1].ToString());
+
+        ok &= Check("ui-smoke: 默认排序是站点原序", vm.ResultSort == ResultSort.Default);
+
+        // 故意打乱：300s / 未知 / 5400s / 2700s
+        vm.SearchResults.Clear();
+        foreach (var (title, duration) in new[]
+                 {
+                     ("短", "5 min"), ("未知", ""), ("最长", "1:30:00"), ("中等", "45 min")
+                 })
+        {
+            vm.SearchResults.Add(new SearchResult
+            {
+                Title = title, Url = "https://site.test/v/" + title,
+                Duration = duration, Site = SiteType.XVideos
+            });
+        }
+
+        var searchTab = new SearchTab { DataContext = vm };
+        searchTab.Measure(new Size(TabWidth, TabHeight));
+        searchTab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        searchTab.UpdateLayout();
+
+        var combo = FindDescendant<ComboBox>(searchTab,
+            c => ReferenceEquals(c.ItemsSource, vm.SortOptions));
+        ok &= Check("ui-smoke: 搜索页排序下拉框已绑定", combo != null);
+        ok &= Check("ui-smoke: 排序下拉框可见", combo != null && IsEffectivelyVisible(combo));
+        ok &= Check("ui-smoke: 下拉框显示当前排序",
+            combo == null || combo.SelectedItem?.ToString() == vm.SortOptions[0].Label,
+            combo?.SelectedItem?.ToString());
+
+        // 通过下拉框改（走真实绑定链：SelectedValue -> ViewModel -> 重排）
+        if (combo != null)
+        {
+            combo.SelectedValue = ResultSort.DurationDesc;
+            combo.UpdateLayout();
+        }
+
+        ok &= Check("ui-smoke: 下拉框选择同步到 ViewModel", vm.ResultSort == ResultSort.DurationDesc);
+
+        var order = vm.SearchResults.Select(r => r.Title).ToArray();
+        ok &= Check("ui-smoke: 列表按时长从长到短重排",
+            string.Join(",", order) == "最长,中等,短,未知", string.Join(",", order));
+        ok &= Check("ui-smoke: 重排后序号跟着可视顺序",
+            vm.SearchResults.Select(r => r.Index).SequenceEqual(new[] { 1, 2, 3, 4 }),
+            string.Join(",", vm.SearchResults.Select(r => r.Index)));
+
+        // 分类页也要有同一个控件
+        var categoryTab = new CategoryTab { DataContext = vm };
+        categoryTab.Measure(new Size(TabWidth, TabHeight));
+        categoryTab.Arrange(new Rect(0, 0, TabWidth, TabHeight));
+        categoryTab.UpdateLayout();
+        ok &= Check("ui-smoke: 分类页排序下拉框已绑定",
+            FindDescendant<ComboBox>(categoryTab, c => ReferenceEquals(c.ItemsSource, vm.SortOptions)) != null);
+
+        // 截图留档（排序控件在列表上方右侧）
+        var bmp = new RenderTargetBitmap((int)TabWidth, (int)TabHeight, 96, 96, PixelFormats.Pbgra32);
+        bmp.Render(searchTab);
+        var shot = Path.Combine(AppContext.BaseDirectory, "ui-smoke-sort.png");
+        using (var fs = File.Create(shot))
+        {
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bmp));
+            encoder.Save(fs);
+        }
+        Console.WriteLine($"  info  screenshot: {shot}");
+
+        // 复位，避免把测试数据写进配置
+        vm.ResultSort = ResultSort.Default;
+        vm.SearchResults.Clear();
 
         return ok;
     }
@@ -185,6 +278,20 @@ internal static class UiSmokeTest
     /// </summary>
     private static bool CheckBatchUi(MainViewModel vm)
     {
+        // 批量栏整条挂在 HasSearchResults 上；前面的排序测试会清空列表，
+        // 这里自己补两行，别让测试之间互相依赖顺序。
+        if (vm.SearchResults.Count == 0)
+        {
+            for (var i = 1; i <= 2; i++)
+                vm.SearchResults.Add(new SearchResult
+                {
+                    Title = $"批量用例 {i}",
+                    Url = $"https://site.test/v/batch{i}",
+                    Duration = "10 min",
+                    Site = SiteType.XVideos
+                });
+        }
+
         var tab = new SearchTab { DataContext = vm };
         tab.Measure(new Size(TabWidth, TabHeight));
         tab.Arrange(new Rect(0, 0, TabWidth, TabHeight));

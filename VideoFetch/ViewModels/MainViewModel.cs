@@ -116,7 +116,47 @@ public partial class MainViewModel : ObservableObject
     /// <summary>时长下拉框的选项（文案本地化）。</summary>
     public ObservableCollection<DurationOption> DurationOptions { get; } = new();
 
-    /// <summary>搜索页是否显示时长下拉框（仅支持的站点）。</summary>
+    /// <summary>
+    /// 结果列表排序方式（搜索页和分类页共用）。
+    /// 只影响当前已在列表里的顺序，不会重新请求站点。
+    /// </summary>
+    [ObservableProperty]
+    private ResultSort _resultSort = ResultSort.Default;
+
+    /// <summary>排序下拉框的选项（文案本地化）。</summary>
+    public ObservableCollection<SortOption> SortOptions { get; } = new();
+
+    /// <summary>
+    /// 切换排序后立刻重排，并把选择记到设置里（下次启动还是这个排序）。
+    /// </summary>
+    partial void OnResultSortChanged(ResultSort value)
+    {
+        ApplyResultSort(SearchResults);
+        ApplyResultSort(CategoryResults);
+
+        Settings.ResultSort = value;
+        _settingsService.Save(Settings);
+    }
+
+    /// <summary>
+    /// 按当前排序方式重排一个结果列表，并重编号。
+    /// 用 Move 原地移动而不是清空重填，选中项和滚动位置都不会丢。
+    /// </summary>
+    private void ApplyResultSort(ObservableCollection<SearchResult> list)
+    {
+        if (ResultSort == ResultSort.Default || list.Count < 2)
+        {
+            UpdateIndices(list);
+            return;
+        }
+
+        ResultSorting.ApplyInPlace(list, ResultSort);
+        UpdateIndices(list);
+    }
+
+    /// <summary>
+    /// 搜索页是否显示时长下拉框（仅支持的站点）。
+    /// </summary>
     public bool ShowSearchDurationFilter => _infoService.SupportsDurationFilter(SearchSite);
 
     /// <summary>分类页是否显示时长下拉框（仅支持的站点）。</summary>
@@ -245,6 +285,12 @@ public partial class MainViewModel : ObservableObject
         DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Short"), DurationFilter.Short));
         DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Medium"), DurationFilter.Medium));
         DurationOptions.Add(new DurationOption(LanguageService.GetString("Dur_Long"), DurationFilter.Long));
+
+        // 排序选项；直接写字段而不是走属性 setter，避免启动时白白存一次配置
+        _resultSort = _settings.ResultSort;
+        SortOptions.Add(new SortOption(LanguageService.GetString("Sort_Default"), ResultSort.Default));
+        SortOptions.Add(new SortOption(LanguageService.GetString("Sort_DurationDesc"), ResultSort.DurationDesc));
+        SortOptions.Add(new SortOption(LanguageService.GetString("Sort_DurationAsc"), ResultSort.DurationAsc));
 
         // 应用代理设置（解析器/下载引擎共享同一个 handler）
         HttpClientFactory.Configure(EffectiveProxyUrl(), Settings.SiteCookies);
@@ -560,6 +606,10 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var r in results)
             target.Add(r);
+
+        // 翻页是追加的，所以每次都要对整份列表重排一次，
+        // 否则"长→短"只在新一页内部有序，整体顺序是乱的
+        ApplyResultSort(target);
 
         if (results.Count > 0)
             _ = LoadThumbnailsAsync(results);

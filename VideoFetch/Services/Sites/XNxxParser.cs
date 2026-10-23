@@ -218,9 +218,16 @@ public class XNxxParser : ISiteParser
             title = Regex.Replace(title, "<[^>]*>", "").Trim();
 
             // Duration
+            // 首选 class='duration'（部分版式有）；XNxx 现在把它混在 metadata 里：
+            //   <p class="metadata"> ... 6.2M 99% 11min - 720p </p>
             var durNode = item.SelectSingleNode(".//span[contains(@class,'duration')]")
                             ?? item.SelectSingleNode(".//div[contains(@class,'duration')]");
             var duration = durNode?.InnerText?.Trim() ?? "";
+            if (duration.Length == 0)
+            {
+                var metaNode = item.SelectSingleNode(".//p[contains(@class,'metadata')]");
+                duration = DurationText.Extract(metaNode?.InnerText);
+            }
 
             // Author / uploader
             var authorNode = item.SelectSingleNode(".//a[contains(@href,'/model/') or contains(@href,'/channels/')]")

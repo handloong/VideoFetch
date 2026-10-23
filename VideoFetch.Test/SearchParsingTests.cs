@@ -28,19 +28,22 @@ internal static class SearchParsingTests
             "xvideos_search.html", SiteType.XVideos,
             html => XVideosParser.ParseSearchHtml(html),
             expectUrlPart: "/video.ufvhohd4fe6/real_sexo_amateur",
-            expectTitle: "real sexo amateur"));
+            expectTitle: "real sexo amateur",
+            expectDuration: "11 min", expectSeconds: 660));
 
         Safe("xnxx", () => TestSite(
             "xnxx_search.html", SiteType.XNxx,
             html => XNxxParser.ParseSearchHtml(html),
             expectUrlPart: "video-z65sf7b",
-            expectTitle: "First time Asian amateur fucked by Japan man"));
+            expectTitle: "First time Asian amateur fucked by Japan man",
+            expectDuration: "11min", expectSeconds: 660));
 
         Safe("pornhub", () => TestSite(
             "pornhub_search.html", SiteType.PornHub,
             html => PornHubParser.ParseSearchResultsHtml(html),
             expectUrlPart: "viewkey=6a662d7e0cfee",
-            expectTitle: "Busty Redhead Rides Him All Night"));
+            expectTitle: "Busty Redhead Rides Him All Night",
+            expectDuration: "10:52", expectSeconds: 652));
 
         Safe("pinse", TestPinSe);
         Safe("robustness", Robustness);
@@ -68,7 +71,8 @@ internal static class SearchParsingTests
     /// <summary>三个基于 HtmlAgilityPack 的站点共用同一组结构断言。</summary>
     private static void TestSite(string fixture, SiteType site,
         Func<string, System.Collections.Generic.List<SearchResult>> parse,
-        string expectUrlPart, string expectTitle)
+        string expectUrlPart, string expectTitle,
+        string expectDuration = "", int expectSeconds = 0)
     {
         Console.WriteLine($"-- {site}");
         var results = parse(Fixture(fixture));
@@ -87,6 +91,12 @@ internal static class SearchParsingTests
             first.ThumbnailUrl);
         Check($"{site}: 标题不含未解码的 HTML 标签",
             results.All(r => !r.Title.Contains('<')));
+        Check($"{site}: 所有结果都解析出时长", results.All(r => r.DurationSeconds > 0),
+            string.Join(", ", results.Select(r => $"'{r.Duration}'={r.DurationSeconds}")));
+        if (expectDuration.Length > 0)
+            Check($"{site}: 时长文案", first.Duration == expectDuration, first.Duration);
+        if (expectSeconds > 0)
+            Check($"{site}: 时长秒数", first.DurationSeconds == expectSeconds, first.DurationSeconds.ToString());
     }
 
     /// <summary>
@@ -105,6 +115,7 @@ internal static class SearchParsingTests
         Check("pinse: 标题内容", first.Title.Contains("去隔壁"), first.Title);
         Check("pinse: 链接是绝对地址", first.Url.StartsWith("https://91pinse.com/v/"), first.Url);
         Check("pinse: 时长", first.Duration == "0:02:14", first.Duration);
+        Check("pinse: 时长秒数", first.DurationSeconds == 134, first.DurationSeconds.ToString());
         Check("pinse: 站点标记", results.All(r => r.Site == SiteType.PinSe));
         Check("pinse: 缩略图是绝对地址", first.ThumbnailUrl.StartsWith("https://"), first.ThumbnailUrl);
     }
